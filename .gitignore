@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.db
+.venv/
+venv/
+build/
+dist/
+bin/
+.buildozer/
+.idea/
+
