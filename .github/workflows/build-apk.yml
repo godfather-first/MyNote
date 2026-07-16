@@ -58,16 +58,46 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install buildozer cython
 
+      - name: Install Android command-line tools
+        run: |
+          set -e
+          SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
+          TOOLS_ZIP="$RUNNER_TEMP/commandlinetools-linux.zip"
+          TOOLS_DIR="$RUNNER_TEMP/android-commandline-tools"
+
+          mkdir -p "$SDK_ROOT" "$TOOLS_DIR"
+          curl -fsSL \
+            -o "$TOOLS_ZIP" \
+            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q "$TOOLS_ZIP" -d "$TOOLS_DIR"
+
+          rm -rf "$SDK_ROOT/cmdline-tools/latest" "$SDK_ROOT/tools"
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+          mv "$TOOLS_DIR/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
+
+          # Buildozer 1.6 still probes this legacy path.
+          cp -a "$SDK_ROOT/cmdline-tools/latest" "$SDK_ROOT/tools"
+
+          echo "$SDK_ROOT/tools/bin" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+
       - name: Pre-accept Android SDK licenses
         run: |
-          mkdir -p "$HOME/.buildozer/android/platform/android-sdk/licenses"
+          SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
+          mkdir -p "$SDK_ROOT/licenses"
           printf '%s\n' \
             '24333f8a63b6825ea9c5514f83c2829b004d1fee' \
             '8933bad161af4178b1185d1a37fbf41ea5269c55' \
-            > "$HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license"
+            > "$SDK_ROOT/licenses/android-sdk-license"
           printf '%s\n' \
             '84831b9409646a918e30573bab4c9c91346d8abd' \
-            > "$HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license"
+            > "$SDK_ROOT/licenses/android-sdk-preview-license"
+
+          yes | "$SDK_ROOT/tools/bin/sdkmanager" --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
+          "$SDK_ROOT/tools/bin/sdkmanager" --sdk_root="$SDK_ROOT" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
       - name: Build APK
         working-directory: ${{ steps.locate.outputs.project_dir }}
