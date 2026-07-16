@@ -21,6 +21,12 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - name: Locate Buildozer project
         id: locate
         shell: bash
@@ -61,6 +67,7 @@ jobs:
       - name: Install Android command-line tools
         run: |
           set -e
+          java -version
           SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
           TOOLS_ZIP="$RUNNER_TEMP/commandlinetools-linux.zip"
           TOOLS_DIR="$RUNNER_TEMP/android-commandline-tools"
