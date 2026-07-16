@@ -48,6 +48,11 @@ jobs:
             git zip unzip openjdk-17-jdk autoconf libtool pkg-config \
             zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 \
             cmake libffi-dev libssl-dev
+          echo "JAVA_HOME=${JAVA_HOME_17_X64:-$JAVA_HOME}" >> "$GITHUB_ENV"
+          echo "${JAVA_HOME_17_X64:-$JAVA_HOME}/bin" >> "$GITHUB_PATH"
+          sudo update-alternatives --set java "${JAVA_HOME_17_X64:-$JAVA_HOME}/bin/java"
+          sudo update-alternatives --set javac "${JAVA_HOME_17_X64:-$JAVA_HOME}/bin/javac"
+          java -version
 
       - name: Cache Buildozer
         uses: actions/cache@v4
@@ -67,6 +72,8 @@ jobs:
       - name: Install Android command-line tools
         run: |
           set -e
+          export JAVA_HOME="${JAVA_HOME_17_X64:-$JAVA_HOME}"
+          export PATH="$JAVA_HOME/bin:$PATH"
           java -version
           SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
           TOOLS_ZIP="$RUNNER_TEMP/commandlinetools-linux.zip"
@@ -90,6 +97,9 @@ jobs:
 
       - name: Pre-accept Android SDK licenses
         run: |
+          export JAVA_HOME="${JAVA_HOME_17_X64:-$JAVA_HOME}"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          java -version
           SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
           mkdir -p "$SDK_ROOT/licenses"
           printf '%s\n' \
@@ -108,7 +118,11 @@ jobs:
 
       - name: Build APK
         working-directory: ${{ steps.locate.outputs.project_dir }}
-        run: buildozer android debug
+        run: |
+          export JAVA_HOME="${JAVA_HOME_17_X64:-$JAVA_HOME}"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          java -version
+          buildozer android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
