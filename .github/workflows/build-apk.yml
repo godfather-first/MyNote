@@ -4,11 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - master
       - main
-    paths:
-      - "MyNote/**"
-      - ".github/workflows/build-apk.yml"
+      - master
 
 jobs:
   build:
@@ -24,6 +21,20 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Locate Buildozer project
+        id: locate
+        shell: bash
+        run: |
+          set -e
+          PROJECT_DIR="$(find "$GITHUB_WORKSPACE" -name buildozer.spec -type f -printf '%h\n' | head -n 1)"
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "No buildozer.spec found"
+            find "$GITHUB_WORKSPACE" -maxdepth 5 -type f | sort
+            exit 1
+          fi
+          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+          echo "Found project at: $PROJECT_DIR"
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -32,35 +43,29 @@ jobs:
             zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 \
             cmake libffi-dev libssl-dev
 
-      - name: Cache Buildozer global directory
+      - name: Cache Buildozer
         uses: actions/cache@v4
         with:
-          path: ~/.buildozer
-          key: buildozer-${{ runner.os }}-${{ hashFiles('MyNote/buildozer.spec') }}
+          path: |
+            ~/.buildozer
+            ${{ steps.locate.outputs.project_dir }}/.buildozer
+          key: buildozer-${{ runner.os }}-${{ hashFiles('**/buildozer.spec') }}
           restore-keys: |
             buildozer-${{ runner.os }}-
 
-      - name: Cache project build directory
-        uses: actions/cache@v4
-        with:
-          path: MyNote/.buildozer
-          key: mynote-buildozer-${{ runner.os }}-${{ hashFiles('MyNote/buildozer.spec') }}
-          restore-keys: |
-            mynote-buildozer-${{ runner.os }}-
-
-      - name: Install Python build tools
+      - name: Install Buildozer
         run: |
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install buildozer cython
 
-      - name: Build debug APK
-        working-directory: MyNote
+      - name: Build APK
+        working-directory: ${{ steps.locate.outputs.project_dir }}
         run: buildozer android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: MyNote-debug-apk
-          path: MyNote/bin/*.apk
+          path: ${{ steps.locate.outputs.project_dir }}/bin/*.apk
           if-no-files-found: error
 
