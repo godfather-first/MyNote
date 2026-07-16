@@ -8,4 +8,7 @@ dist/
 bin/
 .buildozer/
 .idea/
+vm-assets/
+vm-screen.png
+*.iso
 
