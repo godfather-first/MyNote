@@ -8,18 +8,21 @@ on:
       - master
 
 jobs:
-  build:
+  build-apk:
+    name: Build Android APK
     runs-on: ubuntu-22.04
-    timeout-minutes: 90
+    timeout-minutes: 120
+
+    env:
+      ANDROID_API: "35"
+      ANDROID_BUILD_TOOLS: "35.0.0"
+      ANDROID_SDK_ROOT: /home/runner/.buildozer/android/platform/android-sdk
+      ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
+      ANDROIDSDK: /home/runner/.buildozer/android/platform/android-sdk
 
     steps:
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -27,104 +30,122 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Show runtime versions
+        run: |
+          set -eux
+          java -version
+          python --version
+          echo "JAVA_HOME=$JAVA_HOME"
+
+      - name: Install Linux build dependencies
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            autoconf \
+            automake \
+            build-essential \
+            ccache \
+            cmake \
+            gettext \
+            git \
+            libffi-dev \
+            libltdl-dev \
+            libssl-dev \
+            libtool \
+            openjdk-17-jdk \
+            patch \
+            pkg-config \
+            unzip \
+            zip \
+            zlib1g-dev
+
       - name: Locate Buildozer project
         id: locate
         shell: bash
         run: |
-          set -e
-          PROJECT_DIR="$(find "$GITHUB_WORKSPACE" -name buildozer.spec -type f -printf '%h\n' | head -n 1)"
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "No buildozer.spec found"
-            find "$GITHUB_WORKSPACE" -maxdepth 5 -type f | sort
-            exit 1
-          fi
-          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-          echo "Found project at: $PROJECT_DIR"
+          set -eux
+          project_dir="$(find "$GITHUB_WORKSPACE" -name buildozer.spec -type f -printf '%h\n' | head -n 1)"
+          test -n "$project_dir"
+          echo "project_dir=$project_dir" >> "$GITHUB_OUTPUT"
+          echo "Buildozer project: $project_dir"
 
-      - name: Install system dependencies
+      - name: Install Android command line tools
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            git zip unzip openjdk-17-jdk autoconf libtool pkg-config \
-            zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 \
-            cmake libffi-dev libssl-dev
-          echo "JAVA_HOME=${JAVA_HOME_17_X64:-$JAVA_HOME}" >> "$GITHUB_ENV"
-          echo "${JAVA_HOME_17_X64:-$JAVA_HOME}/bin" >> "$GITHUB_PATH"
-          sudo update-alternatives --set java "${JAVA_HOME_17_X64:-$JAVA_HOME}/bin/java"
-          sudo update-alternatives --set javac "${JAVA_HOME_17_X64:-$JAVA_HOME}/bin/javac"
-          java -version
-
-      - name: Cache Buildozer
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.buildozer
-            ${{ steps.locate.outputs.project_dir }}/.buildozer
-          key: buildozer-${{ runner.os }}-${{ hashFiles('**/buildozer.spec') }}
-          restore-keys: |
-            buildozer-${{ runner.os }}-
-
-      - name: Install Buildozer
-        run: |
-          python -m pip install --upgrade pip setuptools wheel
-          python -m pip install buildozer cython
-
-      - name: Install Android command-line tools
-        run: |
-          set -e
-          export JAVA_HOME="${JAVA_HOME_17_X64:-$JAVA_HOME}"
-          export PATH="$JAVA_HOME/bin:$PATH"
-          java -version
-          SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
-          TOOLS_ZIP="$RUNNER_TEMP/commandlinetools-linux.zip"
-          TOOLS_DIR="$RUNNER_TEMP/android-commandline-tools"
-
-          mkdir -p "$SDK_ROOT" "$TOOLS_DIR"
+          set -eux
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
           curl -fsSL \
-            -o "$TOOLS_ZIP" \
+            -o "$RUNNER_TEMP/android-commandlinetools.zip" \
             https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          unzip -q "$TOOLS_ZIP" -d "$TOOLS_DIR"
+          unzip -q "$RUNNER_TEMP/android-commandlinetools.zip" -d "$RUNNER_TEMP/android-tools"
+          mv "$RUNNER_TEMP/android-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
 
-          rm -rf "$SDK_ROOT/cmdline-tools/latest" "$SDK_ROOT/tools"
-          mkdir -p "$SDK_ROOT/cmdline-tools"
-          mv "$TOOLS_DIR/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
+          # Buildozer still checks this legacy location on some versions.
+          mkdir -p "$ANDROID_SDK_ROOT/tools"
+          cp -a "$ANDROID_SDK_ROOT/cmdline-tools/latest/." "$ANDROID_SDK_ROOT/tools/"
 
-          # Buildozer 1.6 still probes this legacy path.
-          cp -a "$SDK_ROOT/cmdline-tools/latest" "$SDK_ROOT/tools"
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_SDK_ROOT/tools/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
 
-          echo "$SDK_ROOT/tools/bin" >> "$GITHUB_PATH"
-          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
-
-      - name: Pre-accept Android SDK licenses
+      - name: Accept Android SDK licenses
+        shell: bash
         run: |
-          export JAVA_HOME="${JAVA_HOME_17_X64:-$JAVA_HOME}"
-          export PATH="$JAVA_HOME/bin:$PATH"
-          java -version
-          SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
-          mkdir -p "$SDK_ROOT/licenses"
+          set -eux
+          mkdir -p "$ANDROID_SDK_ROOT/licenses"
           printf '%s\n' \
             '24333f8a63b6825ea9c5514f83c2829b004d1fee' \
             '8933bad161af4178b1185d1a37fbf41ea5269c55' \
-            > "$SDK_ROOT/licenses/android-sdk-license"
+            > "$ANDROID_SDK_ROOT/licenses/android-sdk-license"
           printf '%s\n' \
             '84831b9409646a918e30573bab4c9c91346d8abd' \
-            > "$SDK_ROOT/licenses/android-sdk-preview-license"
+            > "$ANDROID_SDK_ROOT/licenses/android-sdk-preview-license"
+          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses || true
 
-          yes | "$SDK_ROOT/tools/bin/sdkmanager" --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
-          "$SDK_ROOT/tools/bin/sdkmanager" --sdk_root="$SDK_ROOT" \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
-
-      - name: Build APK
-        working-directory: ${{ steps.locate.outputs.project_dir }}
+      - name: Install Android SDK packages
+        shell: bash
         run: |
+          set -eux
+          sdkmanager --sdk_root="$ANDROID_SDK_ROOT" \
+            "platform-tools" \
+            "platforms;android-${ANDROID_API}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}"
+
+      - name: Cache Buildozer downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle
+            ~/.cache/pip
+            ~/.buildozer
+            ${{ steps.locate.outputs.project_dir }}/.buildozer
+          key: mynote-buildozer-${{ runner.os }}-${{ hashFiles('**/buildozer.spec') }}
+          restore-keys: |
+            mynote-buildozer-${{ runner.os }}-
+
+      - name: Install Buildozer
+        run: |
+          set -eux
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install "cython<3" buildozer
+
+      - name: Build debug APK
+        working-directory: ${{ steps.locate.outputs.project_dir }}
+        shell: bash
+        run: |
+          set -eux
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/tools/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
           export JAVA_HOME="${JAVA_HOME_17_X64:-$JAVA_HOME}"
-          export PATH="$JAVA_HOME/bin:$PATH"
           java -version
           buildozer android debug
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: MyNote-debug-apk
