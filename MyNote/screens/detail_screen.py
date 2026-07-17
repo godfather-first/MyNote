@@ -7,7 +7,14 @@ from kivy.uix.checkbox import CheckBox
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
+from kivy.uix.spinner import Spinner
 from kivy.uix.textinput import TextInput
+
+from font_utils import FONT_NAME
+from screens.add_screen import PRIORITY_VALUES
+
+
+PRIORITY_LABELS = {value: label for label, value in PRIORITY_VALUES.items()}
 
 
 class DetailScreen(Screen):
@@ -27,13 +34,14 @@ class DetailScreen(Screen):
         )
 
         header = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(8))
-        back = Button(text="<", size_hint_x=None, width=dp(52))
+        back = Button(text="<", size_hint_x=None, width=dp(52), font_name=FONT_NAME)
         back.bind(on_release=lambda *_: self._back_home())
         title = Label(
             text="任务详情",
             color=(0.12, 0.12, 0.12, 1),
             font_size=dp(22),
             bold=True,
+            font_name=FONT_NAME,
         )
         header.add_widget(back)
         header.add_widget(title)
@@ -44,13 +52,15 @@ class DetailScreen(Screen):
             size_hint_y=None,
             height=dp(52),
             padding=(dp(12), dp(14), dp(12), dp(10)),
+            font_name=FONT_NAME,
         )
         self.content_input = TextInput(
             hint_text="备注",
             multiline=True,
             size_hint_y=None,
-            height=dp(140),
+            height=dp(130),
             padding=(dp(12), dp(12), dp(12), dp(12)),
+            font_name=FONT_NAME,
         )
         self.date_input = TextInput(
             hint_text="截止日期",
@@ -58,7 +68,23 @@ class DetailScreen(Screen):
             size_hint_y=None,
             height=dp(52),
             padding=(dp(12), dp(14), dp(12), dp(10)),
+            font_name=FONT_NAME,
         )
+
+        option_row = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(8))
+        self.priority_spinner = Spinner(
+            text="普通",
+            values=("普通", "重要", "紧急"),
+            font_name=FONT_NAME,
+        )
+        self.category_input = TextInput(
+            hint_text="分类",
+            multiline=False,
+            padding=(dp(12), dp(14), dp(12), dp(10)),
+            font_name=FONT_NAME,
+        )
+        option_row.add_widget(self.priority_spinner)
+        option_row.add_widget(self.category_input)
 
         status_row = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
         self.status_checkbox = CheckBox(size_hint_x=None, width=dp(48))
@@ -67,6 +93,7 @@ class DetailScreen(Screen):
             color=(0.12, 0.12, 0.12, 1),
             halign="left",
             valign="middle",
+            font_name=FONT_NAME,
         )
         status_label.bind(size=lambda widget, _value: setattr(widget, "text_size", widget.size))
         status_row.add_widget(self.status_checkbox)
@@ -78,12 +105,14 @@ class DetailScreen(Screen):
             height=dp(54),
             color=(0.45, 0.45, 0.45, 1),
             font_size=dp(13),
+            font_name=FONT_NAME,
         )
         self.error_label = Label(
             text="",
             size_hint_y=None,
             height=dp(28),
             color=(0.75, 0.18, 0.16, 1),
+            font_name=FONT_NAME,
         )
 
         buttons = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(8))
@@ -92,12 +121,14 @@ class DetailScreen(Screen):
             background_normal="",
             background_color=(0.18, 0.55, 0.28, 1),
             color=(1, 1, 1, 1),
+            font_name=FONT_NAME,
         )
         delete = Button(
             text="删除",
             background_normal="",
             background_color=(0.75, 0.18, 0.16, 1),
             color=(1, 1, 1, 1),
+            font_name=FONT_NAME,
         )
         save.bind(on_release=lambda *_: self._save())
         delete.bind(on_release=lambda *_: self._confirm_delete())
@@ -108,11 +139,12 @@ class DetailScreen(Screen):
         root.add_widget(self.title_input)
         root.add_widget(self.content_input)
         root.add_widget(self.date_input)
+        root.add_widget(option_row)
         root.add_widget(status_row)
         root.add_widget(self.meta_label)
         root.add_widget(self.error_label)
         root.add_widget(buttons)
-        root.add_widget(Label())
+        root.add_widget(Label(font_name=FONT_NAME))
         self.add_widget(root)
 
     def load_task(self, task_id):
@@ -124,6 +156,8 @@ class DetailScreen(Screen):
         self.title_input.text = task.title
         self.content_input.text = task.content
         self.date_input.text = task.due_date
+        self.priority_spinner.text = PRIORITY_LABELS.get(task.priority, "普通")
+        self.category_input.text = task.category
         self.status_checkbox.active = task.is_done
         self.error_label.text = ""
         self.meta_label.text = (
@@ -143,26 +177,41 @@ class DetailScreen(Screen):
             content=self.content_input.text.strip(),
             due_date=self.date_input.text.strip(),
             status=1 if self.status_checkbox.active else 0,
+            priority=PRIORITY_VALUES[self.priority_spinner.text],
+            category=self.category_input.text.strip() or "默认",
         )
         self._back_home()
 
     def _confirm_delete(self):
         content = BoxLayout(orientation="vertical", spacing=dp(12), padding=dp(16))
-        content.add_widget(Label(text="是否删除该任务？", color=(0.12, 0.12, 0.12, 1)))
+        content.add_widget(
+            Label(
+                text="是否删除该任务？",
+                color=(0.12, 0.12, 0.12, 1),
+                font_name=FONT_NAME,
+            )
+        )
 
         buttons = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
-        cancel = Button(text="取消")
+        cancel = Button(text="取消", font_name=FONT_NAME)
         confirm = Button(
             text="确认删除",
             background_normal="",
             background_color=(0.75, 0.18, 0.16, 1),
             color=(1, 1, 1, 1),
+            font_name=FONT_NAME,
         )
         buttons.add_widget(cancel)
         buttons.add_widget(confirm)
         content.add_widget(buttons)
 
-        popup = Popup(title="确认", content=content, size_hint=(0.8, None), height=dp(190))
+        popup = Popup(
+            title="确认",
+            content=content,
+            size_hint=(0.8, None),
+            height=dp(190),
+            title_font=FONT_NAME,
+        )
         cancel.bind(on_release=popup.dismiss)
         confirm.bind(on_release=lambda *_: self._delete_task(popup))
         popup.open()
@@ -174,3 +223,4 @@ class DetailScreen(Screen):
 
     def _back_home(self):
         self.manager.current = "home"
+

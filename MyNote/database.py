@@ -51,15 +51,31 @@ class TaskDatabase:
         if "due_date" not in columns:
             self.connection.execute("ALTER TABLE tasks ADD COLUMN due_date TEXT DEFAULT ''")
             self.connection.commit()
+        if "priority" not in columns:
+            self.connection.execute("ALTER TABLE tasks ADD COLUMN priority INTEGER DEFAULT 0")
+            self.connection.commit()
+        if "category" not in columns:
+            self.connection.execute("ALTER TABLE tasks ADD COLUMN category TEXT DEFAULT '默认'")
+            self.connection.commit()
 
-    def add_task(self, title: str, content: str = "", due_date: str = "") -> int:
+    def add_task(
+        self,
+        title: str,
+        content: str = "",
+        due_date: str = "",
+        priority: int = 0,
+        category: str = "默认",
+    ) -> int:
         now = self._now()
         cursor = self.connection.execute(
             """
-            INSERT INTO tasks (title, content, status, create_time, update_time, due_date)
-            VALUES (?, ?, 0, ?, ?, ?)
+            INSERT INTO tasks (
+                title, content, status, create_time, update_time,
+                due_date, priority, category
+            )
+            VALUES (?, ?, 0, ?, ?, ?, ?, ?)
             """,
-            (title, content, now, now, due_date),
+            (title, content, now, now, due_date, priority, category),
         )
         self.connection.commit()
         return int(cursor.lastrowid)
@@ -67,9 +83,10 @@ class TaskDatabase:
     def get_tasks(self) -> list[Task]:
         rows = self.connection.execute(
             """
-            SELECT id, title, content, status, create_time, update_time, due_date
+            SELECT id, title, content, status, create_time, update_time,
+                   due_date, priority, category
             FROM tasks
-            ORDER BY id DESC
+            ORDER BY status ASC, priority DESC, id DESC
             """
         ).fetchall()
         return [self._row_to_task(row) for row in rows]
@@ -77,7 +94,8 @@ class TaskDatabase:
     def get_task(self, task_id: int) -> Task | None:
         row = self.connection.execute(
             """
-            SELECT id, title, content, status, create_time, update_time, due_date
+            SELECT id, title, content, status, create_time, update_time,
+                   due_date, priority, category
             FROM tasks
             WHERE id = ?
             """,
@@ -92,14 +110,17 @@ class TaskDatabase:
         content: str,
         due_date: str,
         status: int,
+        priority: int = 0,
+        category: str = "默认",
     ) -> None:
         self.connection.execute(
             """
             UPDATE tasks
-            SET title = ?, content = ?, due_date = ?, status = ?, update_time = ?
+            SET title = ?, content = ?, due_date = ?, status = ?,
+                priority = ?, category = ?, update_time = ?
             WHERE id = ?
             """,
-            (title, content, due_date, status, self._now(), task_id),
+            (title, content, due_date, status, priority, category, self._now(), task_id),
         )
         self.connection.commit()
 
@@ -131,5 +152,6 @@ class TaskDatabase:
             create_time=row["create_time"],
             update_time=row["update_time"],
             due_date=row["due_date"] or "",
+            priority=int(row["priority"] or 0),
+            category=row["category"] or "默认",
         )
-

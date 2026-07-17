@@ -5,7 +5,13 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen
+from kivy.uix.spinner import Spinner
 from kivy.uix.textinput import TextInput
+
+from font_utils import FONT_NAME
+
+
+PRIORITY_VALUES = {"普通": 0, "重要": 1, "紧急": 2}
 
 
 class AddScreen(Screen):
@@ -24,13 +30,14 @@ class AddScreen(Screen):
         )
 
         header = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(8))
-        back = Button(text="<", size_hint_x=None, width=dp(52))
+        back = Button(text="<", size_hint_x=None, width=dp(52), font_name=FONT_NAME)
         back.bind(on_release=lambda *_: self._back_home())
         title = Label(
             text="新增任务",
             color=(0.12, 0.12, 0.12, 1),
             font_size=dp(22),
             bold=True,
+            font_name=FONT_NAME,
         )
         header.add_widget(back)
         header.add_widget(title)
@@ -41,13 +48,15 @@ class AddScreen(Screen):
             size_hint_y=None,
             height=dp(52),
             padding=(dp(12), dp(14), dp(12), dp(10)),
+            font_name=FONT_NAME,
         )
         self.content_input = TextInput(
             hint_text="备注",
             multiline=True,
             size_hint_y=None,
-            height=dp(140),
+            height=dp(130),
             padding=(dp(12), dp(12), dp(12), dp(12)),
+            font_name=FONT_NAME,
         )
         self.date_input = TextInput(
             hint_text="截止日期，例如 2026-07-20",
@@ -55,12 +64,30 @@ class AddScreen(Screen):
             size_hint_y=None,
             height=dp(52),
             padding=(dp(12), dp(14), dp(12), dp(10)),
+            font_name=FONT_NAME,
         )
+
+        option_row = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(8))
+        self.priority_spinner = Spinner(
+            text="普通",
+            values=("普通", "重要", "紧急"),
+            font_name=FONT_NAME,
+        )
+        self.category_input = TextInput(
+            hint_text="分类，例如 工作/生活",
+            multiline=False,
+            padding=(dp(12), dp(14), dp(12), dp(10)),
+            font_name=FONT_NAME,
+        )
+        option_row.add_widget(self.priority_spinner)
+        option_row.add_widget(self.category_input)
+
         self.error_label = Label(
             text="",
             size_hint_y=None,
             height=dp(28),
             color=(0.75, 0.18, 0.16, 1),
+            font_name=FONT_NAME,
         )
 
         save = Button(
@@ -71,6 +98,7 @@ class AddScreen(Screen):
             background_color=(0.18, 0.55, 0.28, 1),
             color=(1, 1, 1, 1),
             font_size=dp(18),
+            font_name=FONT_NAME,
         )
         save.bind(on_release=lambda *_: self._save())
 
@@ -78,15 +106,18 @@ class AddScreen(Screen):
         root.add_widget(self.title_input)
         root.add_widget(self.content_input)
         root.add_widget(self.date_input)
+        root.add_widget(option_row)
         root.add_widget(self.error_label)
         root.add_widget(save)
-        root.add_widget(Label())
+        root.add_widget(Label(font_name=FONT_NAME))
         self.add_widget(root)
 
     def on_pre_enter(self, *_args):
         self.title_input.text = ""
         self.content_input.text = ""
         self.date_input.text = ""
+        self.priority_spinner.text = "普通"
+        self.category_input.text = ""
         self.error_label.text = ""
 
     def _save(self):
@@ -99,8 +130,11 @@ class AddScreen(Screen):
             title=title,
             content=self.content_input.text.strip(),
             due_date=self.date_input.text.strip(),
+            priority=PRIORITY_VALUES[self.priority_spinner.text],
+            category=self.category_input.text.strip() or "默认",
         )
         self._back_home()
 
     def _back_home(self):
         self.manager.current = "home"
+

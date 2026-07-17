@@ -7,6 +7,7 @@ from kivy.core.window import Window
 from kivy.uix.screenmanager import NoTransition, ScreenManager
 
 from database import TaskDatabase
+from font_utils import register_chinese_font
 from screens.add_screen import AddScreen
 from screens.detail_screen import DetailScreen
 from screens.home_screen import HomeScreen
@@ -26,6 +27,7 @@ class MyNoteApp(App):
 
     def build(self):
         Window.clearcolor = (0.96, 0.96, 0.94, 1)
+        register_chinese_font()
         self.state = AppState(database=TaskDatabase())
 
         manager = ScreenManager(transition=NoTransition())
@@ -40,4 +42,3 @@ class MyNoteApp(App):
 
 if __name__ == "__main__":
     MyNoteApp().run()
-
