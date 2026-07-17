@@ -5,13 +5,13 @@ package.domain = org.local
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,db
 version = 0.1.0
-requirements = python3,kivy
+requirements = python3,kivy,sqlite3
 orientation = portrait
 fullscreen = 0
 android.minapi = 23
 android.api = 35
 android.build_tools_version = 35.0.0
-android.archs = arm64-v8a, armeabi-v7a
+android.archs = arm64-v8a
 android.permissions =
 android.accept_sdk_license = True
 

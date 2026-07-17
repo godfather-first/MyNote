@@ -56,7 +56,11 @@ jobs:
             git \
             libffi-dev \
             libltdl-dev \
+            libncurses5-dev \
+            libncursesw5-dev \
+            libsqlite3-dev \
             libssl-dev \
+            libtinfo6 \
             libtool \
             openjdk-17-jdk \
             patch \
@@ -143,7 +147,18 @@ jobs:
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/tools/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
           export JAVA_HOME="${JAVA_HOME_17_X64:-$JAVA_HOME}"
           java -version
+          buildozer android clean || true
           buildozer android debug
+
+      - name: Upload Buildozer logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buildozer-failure-logs
+          path: |
+            ${{ steps.locate.outputs.project_dir }}/.buildozer/**/*.log
+            ${{ steps.locate.outputs.project_dir }}/.buildozer/android/platform/python-for-android/**/*.log
+          if-no-files-found: ignore
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
