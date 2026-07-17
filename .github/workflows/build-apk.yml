@@ -129,9 +129,9 @@ jobs:
             ~/.cache/pip
             ~/.buildozer
             ${{ steps.locate.outputs.project_dir }}/.buildozer
-          key: mynote-buildozer-${{ runner.os }}-${{ hashFiles('**/buildozer.spec') }}
+          key: mynote-buildozer-v2-${{ runner.os }}-${{ hashFiles('**/buildozer.spec') }}
           restore-keys: |
-            mynote-buildozer-${{ runner.os }}-
+            mynote-buildozer-v2-${{ runner.os }}-
 
       - name: Install Buildozer
         run: |
@@ -143,12 +143,12 @@ jobs:
         working-directory: ${{ steps.locate.outputs.project_dir }}
         shell: bash
         run: |
-          set -eux
+          set -euxo pipefail
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/tools/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
           export JAVA_HOME="${JAVA_HOME_17_X64:-$JAVA_HOME}"
           java -version
           buildozer android clean || true
-          buildozer android debug
+          buildozer -v android debug 2>&1 | tee buildozer-full.log
 
       - name: Upload Buildozer logs on failure
         if: failure()
@@ -156,6 +156,7 @@ jobs:
         with:
           name: buildozer-failure-logs
           path: |
+            ${{ steps.locate.outputs.project_dir }}/buildozer-full.log
             ${{ steps.locate.outputs.project_dir }}/.buildozer/**/*.log
             ${{ steps.locate.outputs.project_dir }}/.buildozer/android/platform/python-for-android/**/*.log
           if-no-files-found: ignore
