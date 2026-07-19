@@ -1,6 +1,14 @@
 from models import Task
 from screens.home_screen import TaskRow
-from ui_components import DatePickerField
+from ui_components import DatePickerField, StableTextInput
+
+
+def test_stable_text_input_disables_mobile_copy_paste_bubble():
+    field = StableTextInput()
+
+    assert field.unfocus_on_touch is False
+    assert field.use_bubble is False
+    assert field.use_handles is False
 
 
 def test_date_picker_field_allows_manual_text_entry():

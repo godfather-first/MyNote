@@ -51,6 +51,8 @@ class StableTextInput(TextInput):
 
     def __init__(self, **kwargs):
         kwargs.setdefault("unfocus_on_touch", False)
+        kwargs.setdefault("use_bubble", False)
+        kwargs.setdefault("use_handles", False)
         super().__init__(**kwargs)
 
     def on_touch_down(self, touch):
