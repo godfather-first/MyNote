@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from priority import priority_label
+
 
 @dataclass
 class Task:
@@ -16,6 +18,7 @@ class Task:
     due_date: str = ""
     priority: int = 0
     category: str = "默认"
+    reminder_sent: int = 0
 
     @property
     def is_done(self) -> bool:
@@ -23,4 +26,26 @@ class Task:
 
     @property
     def priority_text(self) -> str:
-        return {0: "普通", 1: "重要", 2: "紧急"}.get(self.priority, "普通")
+        return priority_label(self.priority)
+
+
+@dataclass
+class DeletedTask:
+    """A task archived in the recycle bin."""
+
+    id: int
+    original_task_id: int | None
+    title: str
+    content: str
+    status: int
+    create_time: str
+    update_time: str
+    due_date: str
+    priority: int
+    category: str
+    reminder_sent: int
+    deleted_time: str
+
+    @property
+    def priority_text(self) -> str:
+        return priority_label(self.priority)

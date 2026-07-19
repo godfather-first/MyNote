@@ -5,12 +5,13 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen
+from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
 
-from font_utils import ChineseSpinner, FONT_NAME
-
-
-PRIORITY_VALUES = {"普通": 0, "重要": 1, "紧急": 2}
+from date_utils import normalize_date_text, today_text
+from font_utils import FONT_NAME
+from priority import PRIORITY_VALUES
+from ui_components import DatePickerField, PriorityPicker
 
 
 class AddScreen(Screen):
@@ -26,7 +27,9 @@ class AddScreen(Screen):
             orientation="vertical",
             padding=(dp(16), dp(16), dp(16), dp(16)),
             spacing=dp(12),
+            size_hint_y=None,
         )
+        root.bind(minimum_height=root.setter("height"))
 
         header = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(8))
         back = Button(text="<", size_hint_x=None, width=dp(52), font_name=FONT_NAME)
@@ -57,29 +60,34 @@ class AddScreen(Screen):
             padding=(dp(12), dp(12), dp(12), dp(12)),
             font_name=FONT_NAME,
         )
-        self.date_input = TextInput(
-            hint_text="截止日期，例如 2026-07-20",
+        self.date_picker = DatePickerField(initial_date=today_text())
+
+        option_row = BoxLayout(size_hint_y=None, height=dp(74), spacing=dp(8))
+        self.priority_picker = PriorityPicker(initial_value=PRIORITY_VALUES["普通"])
+        category_box = BoxLayout(orientation="vertical", spacing=dp(4))
+        category_label = Label(
+            text="分类",
+            size_hint_y=None,
+            height=dp(18),
+            halign="left",
+            valign="middle",
+            color=(0.34, 0.34, 0.34, 1),
+            font_size=dp(12),
+            font_name=FONT_NAME,
+        )
+        category_label.bind(size=lambda widget, _value: setattr(widget, "text_size", widget.size))
+        self.category_input = TextInput(
+            hint_text="分类，例如 工作/生活",
             multiline=False,
             size_hint_y=None,
             height=dp(52),
             padding=(dp(12), dp(14), dp(12), dp(10)),
             font_name=FONT_NAME,
         )
-
-        option_row = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(8))
-        self.priority_spinner = ChineseSpinner(
-            text="普通",
-            values=("普通", "重要", "紧急"),
-            font_name=FONT_NAME,
-        )
-        self.category_input = TextInput(
-            hint_text="分类，例如 工作/生活",
-            multiline=False,
-            padding=(dp(12), dp(14), dp(12), dp(10)),
-            font_name=FONT_NAME,
-        )
-        option_row.add_widget(self.priority_spinner)
-        option_row.add_widget(self.category_input)
+        category_box.add_widget(category_label)
+        category_box.add_widget(self.category_input)
+        option_row.add_widget(self.priority_picker)
+        option_row.add_widget(category_box)
 
         self.error_label = Label(
             text="",
@@ -104,18 +112,21 @@ class AddScreen(Screen):
         root.add_widget(header)
         root.add_widget(self.title_input)
         root.add_widget(self.content_input)
-        root.add_widget(self.date_input)
+        root.add_widget(self.date_picker)
         root.add_widget(option_row)
         root.add_widget(self.error_label)
         root.add_widget(save)
-        root.add_widget(Label(font_name=FONT_NAME))
-        self.add_widget(root)
+        root.add_widget(Label(size_hint_y=None, height=dp(12), font_name=FONT_NAME))
+
+        scroll = ScrollView()
+        scroll.add_widget(root)
+        self.add_widget(scroll)
 
     def on_pre_enter(self, *_args):
         self.title_input.text = ""
         self.content_input.text = ""
-        self.date_input.text = ""
-        self.priority_spinner.text = "普通"
+        self.date_picker.set_date(today_text())
+        self.priority_picker.set_priority(PRIORITY_VALUES["普通"])
         self.category_input.text = ""
         self.error_label.text = ""
 
@@ -125,15 +136,20 @@ class AddScreen(Screen):
             self.error_label.text = "任务标题不能为空"
             return
 
+        try:
+            due_date = normalize_date_text(self.date_picker.get_date())
+        except ValueError:
+            self.error_label.text = "截止日期必须为 YYYY-MM-DD"
+            return
+
         self.app_state.database.add_task(
             title=title,
             content=self.content_input.text.strip(),
-            due_date=self.date_input.text.strip(),
-            priority=PRIORITY_VALUES[self.priority_spinner.text],
+            due_date=due_date,
+            priority=self.priority_picker.priority_value,
             category=self.category_input.text.strip() or "默认",
         )
         self._back_home()
 
     def _back_home(self):
         self.manager.current = "home"
-

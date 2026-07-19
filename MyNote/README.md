@@ -41,23 +41,15 @@ The `buildozer.spec` file already includes `ttf`, `ttc`, and `otf` font files.
 
 ## Build Android APK
 
-Buildozer is best run on Linux or WSL. From the `MyNote` directory:
-
-```bash
-pip install buildozer
-buildozer android debug
-```
-
-After the build finishes, the APK is generated under:
-
-```text
-bin/
-```
+The repository includes a GitHub Actions workflow at
+`.github/workflows/build-apk.yml`. Push the project to GitHub or run the
+workflow manually from the Actions tab, then download the `MyNote-debug-apk`
+artifact after the workflow finishes.
 
 Install it on an Android phone with:
 
 ```bash
-adb install bin/*.apk
+adb install *.apk
 ```
 
 ## Database

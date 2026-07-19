@@ -11,8 +11,12 @@ from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
+from kivy.utils import escape_markup
 
+from date_utils import deadline_datetime, human_remaining
 from font_utils import FONT_NAME
+from priority import priority_option
+from ui_components import RoundedPanel
 
 
 FILTERS = [
@@ -44,40 +48,31 @@ def due_state(due_date: str, is_done: bool) -> tuple[str, tuple[float, float, fl
     return f"截止: {due_date}", (0.24, 0.42, 0.70, 1)
 
 
-class TaskRow(BoxLayout):
+class TaskRow(RoundedPanel):
     """Single task row used by the home list."""
 
     def __init__(self, task, on_open, on_toggle, on_delete, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(bg_color=(1, 1, 1, 1), **kwargs)
         self.task = task
         self.on_open = on_open
         self.on_toggle = on_toggle
         self.on_delete = on_delete
         self._long_press_event = None
         self._long_press_fired = False
+        self._touch_start_x = 0
+        self._touch_start_y = 0
+        self._swipe_deleted = False
 
         self.orientation = "horizontal"
-        self.spacing = dp(8)
-        self.padding = (dp(12), dp(8), dp(12), dp(8))
+        self.spacing = dp(10)
+        self.padding = (dp(14), dp(10), dp(12), dp(10))
         self.size_hint_y = None
-        self.height = dp(92)
-
-        self.status_button = Button(
-            text="☑" if task.is_done else "☐",
-            size_hint=(None, 1),
-            width=dp(48),
-            background_normal="",
-            background_color=(0.92, 0.95, 0.92, 1),
-            color=(0.15, 0.45, 0.18, 1),
-            font_size=dp(20),
-            font_name=FONT_NAME,
-        )
-        self.status_button.bind(on_release=self._toggle)
+        self.height = dp(82)
 
         info = BoxLayout(orientation="vertical", spacing=dp(3))
         text_color = (0.48, 0.48, 0.48, 1) if task.is_done else (0.12, 0.12, 0.12, 1)
-        title = Label(
-            text=task.title,
+        self.title_label = Label(
+            text=escape_markup(task.title),
             size_hint_y=None,
             height=dp(30),
             halign="left",
@@ -86,74 +81,100 @@ class TaskRow(BoxLayout):
             bold=not task.is_done,
             font_size=dp(16),
             font_name=FONT_NAME,
+            markup=True,
         )
-        title.bind(size=lambda widget, _value: setattr(widget, "text_size", widget.size))
-        title.bind(on_touch_down=self._open_from_label)
+        self.title_label.bind(size=lambda widget, _value: setattr(widget, "text_size", widget.size))
 
         deadline_text, deadline_color = due_state(task.due_date, task.is_done)
+        priority = priority_option(task.priority_text)
+        meta_color = (0.55, 0.55, 0.55, 1) if task.is_done else (
+            priority["color"] if task.priority > 0 else deadline_color
+        )
         meta = Label(
             text=f"{task.category} | {task.priority_text} | {deadline_text}",
             size_hint_y=None,
-            height=dp(24),
+            height=dp(28),
             halign="left",
             valign="middle",
-            color=deadline_color if not task.is_done else (0.55, 0.55, 0.55, 1),
+            color=meta_color,
             font_size=dp(12),
             font_name=FONT_NAME,
         )
         meta.bind(size=lambda widget, _value: setattr(widget, "text_size", widget.size))
 
-        created = Label(
-            text=f"创建: {task.create_time}",
-            size_hint_y=None,
-            height=dp(22),
-            halign="left",
-            valign="middle",
-            color=(0.58, 0.58, 0.58, 1),
-            font_size=dp(11),
+        self.status_button = Button(
+            text="恢复" if task.is_done else "完成",
+            size_hint=(None, 1),
+            width=dp(58),
+            background_normal="",
+            background_color=(0.86, 0.88, 0.82, 1) if task.is_done else (0.18, 0.55, 0.28, 1),
+            color=(0.20, 0.20, 0.20, 1) if task.is_done else (1, 1, 1, 1),
+            font_size=dp(13),
             font_name=FONT_NAME,
         )
-        created.bind(size=lambda widget, _value: setattr(widget, "text_size", widget.size))
+        self.status_button.bind(on_release=self._toggle)
 
-        info.add_widget(title)
+        info.add_widget(self.title_label)
         info.add_widget(meta)
-        info.add_widget(created)
-        info.bind(on_touch_down=self._open_from_label)
 
-        self.add_widget(self.status_button)
         self.add_widget(info)
+        self.add_widget(self.status_button)
 
     def on_touch_down(self, touch):
         if not self.collide_point(*touch.pos):
             return super().on_touch_down(touch)
-        if touch.is_double_tap:
-            self._open_detail()
-            return True
-        # Skip long-press when the touch is on the status_button (checkbox)
-        # to avoid triggering accidental delete when toggling task status
         if self.status_button.collide_point(*touch.pos):
             return super().on_touch_down(touch)
+        touch.grab(self)
+        self._touch_start_x = touch.x
+        self._touch_start_y = touch.y
+        self._swipe_deleted = False
         self._long_press_fired = False
-        self._long_press_event = Clock.schedule_once(self._trigger_long_press, 0.7)
-        return super().on_touch_down(touch)
+        self._long_press_event = Clock.schedule_once(self._trigger_long_press, 2.0)
+        return True
+
+    def on_touch_move(self, touch):
+        if touch.grab_current is not self:
+            return super().on_touch_move(touch)
+        dx = touch.x - self._touch_start_x
+        dy = touch.y - self._touch_start_y
+        if dx > dp(96) and abs(dx) > abs(dy) * 1.35 and not self._swipe_deleted:
+            self._swipe_deleted = True
+            self._cancel_long_press()
+            self.on_delete(self.task.id)
+        return True
 
     def on_touch_up(self, touch):
+        if touch.grab_current is not self:
+            return super().on_touch_up(touch)
+        touch.ungrab(self)
+        self._cancel_long_press()
+        dx = touch.x - self._touch_start_x
+        dy = touch.y - self._touch_start_y
+        if self._long_press_fired:
+            self._set_title_preview(False)
+            return True
+        if not self._swipe_deleted and abs(dx) < dp(16) and abs(dy) < dp(16) and self.collide_point(*touch.pos):
+            self._open_detail()
+            return True
+        return True
+
+    def _cancel_long_press(self):
         if self._long_press_event is not None:
             self._long_press_event.cancel()
             self._long_press_event = None
-        if self._long_press_fired and self.collide_point(*touch.pos):
-            return True
-        return super().on_touch_up(touch)
-
-    def _open_from_label(self, widget, touch):
-        if widget.collide_point(*touch.pos):
-            self._open_detail()
-            return True
-        return False
 
     def _trigger_long_press(self, *_args):
         self._long_press_fired = True
-        self.on_delete(self.task.id)
+        self._set_title_preview(True)
+
+    def _set_title_preview(self, preview: bool):
+        if preview:
+            self.title_label.text = f"[s]{escape_markup(self.task.title)}[/s]"
+            self.title_label.color = (0.72, 0.16, 0.16, 1)
+        else:
+            self.title_label.text = escape_markup(self.task.title)
+            self.title_label.color = (0.48, 0.48, 0.48, 1) if self.task.is_done else (0.12, 0.12, 0.12, 1)
 
     def _open_detail(self, *_args):
         self.on_open(self.task.id)
@@ -170,20 +191,43 @@ class HomeScreen(Screen):
         self.app_state = app_state
         self.current_filter = "all"
         self.filter_buttons = {}
+        self._active_reminder_popup = None
         self._build_ui()
+        self._reminder_event = Clock.schedule_interval(self._poll_due_reminders, 30)
+        self._cleanup_event = Clock.schedule_interval(
+            lambda *_: self.app_state.database.purge_expired_deleted_tasks(),
+            6 * 60 * 60,
+        )
 
     def _build_ui(self):
         root = BoxLayout(orientation="vertical", spacing=0)
 
-        header = Label(
+        header = BoxLayout(size_hint_y=None, height=dp(58), spacing=dp(8), padding=(dp(12), dp(8)))
+        title = Label(
             text="MyNote",
+            halign="left",
+            valign="middle",
             size_hint_y=None,
-            height=dp(58),
+            height=dp(42),
             font_size=dp(24),
             bold=True,
             color=(0.12, 0.12, 0.12, 1),
             font_name=FONT_NAME,
         )
+        title.bind(size=lambda widget, _value: setattr(widget, "text_size", widget.size))
+        recycle = Button(
+            text="回收站",
+            size_hint=(None, None),
+            width=dp(84),
+            height=dp(42),
+            background_normal="",
+            background_color=(0.26, 0.42, 0.64, 1),
+            color=(1, 1, 1, 1),
+            font_name=FONT_NAME,
+        )
+        recycle.bind(on_release=lambda *_: self._go_recycle_bin())
+        header.add_widget(title)
+        header.add_widget(recycle)
 
         self.search_input = TextInput(
             hint_text="搜索任务标题或备注",
@@ -251,6 +295,7 @@ class HomeScreen(Screen):
 
     def on_pre_enter(self, *_args):
         self.refresh()
+        self._poll_due_reminders()
 
     def refresh(self):
         self.list_box.clear_widgets()
@@ -280,7 +325,7 @@ class HomeScreen(Screen):
                     task=task,
                     on_open=self._go_detail,
                     on_toggle=self._toggle_task,
-                    on_delete=self._confirm_delete,
+                    on_delete=self._archive_task,
                 )
             )
 
@@ -312,6 +357,11 @@ class HomeScreen(Screen):
     def _go_add(self):
         self.manager.current = "add"
 
+    def _go_recycle_bin(self):
+        recycle_bin = self.manager.get_screen("recycle_bin")
+        recycle_bin.refresh()
+        self.manager.current = "recycle_bin"
+
     def _go_detail(self, task_id):
         detail = self.manager.get_screen("detail")
         detail.load_task(task_id)
@@ -321,11 +371,15 @@ class HomeScreen(Screen):
         self.app_state.database.set_status(task_id, status)
         self.refresh()
 
+    def _archive_task(self, task_id):
+        self.app_state.database.delete_task(task_id)
+        self.refresh()
+
     def _confirm_delete(self, task_id):
         content = BoxLayout(orientation="vertical", spacing=dp(12), padding=dp(16))
         content.add_widget(
             Label(
-                text="是否删除该任务？",
+                text="是否将该任务移入回收站？",
                 color=(0.12, 0.12, 0.12, 1),
                 font_name=FONT_NAME,
             )
@@ -334,7 +388,7 @@ class HomeScreen(Screen):
         buttons = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
         cancel = Button(text="取消", font_name=FONT_NAME)
         confirm = Button(
-            text="确认删除",
+            text="移入回收站",
             background_normal="",
             background_color=(0.75, 0.18, 0.16, 1),
             color=(1, 1, 1, 1),
@@ -357,6 +411,75 @@ class HomeScreen(Screen):
 
     def _delete_task(self, task_id, popup):
         popup.dismiss()
-        self.app_state.database.delete_task(task_id)
-        self.refresh()
+        self._archive_task(task_id)
 
+    def _poll_due_reminders(self, *_args):
+        if self._active_reminder_popup is not None:
+            return
+
+        due_tasks = self.app_state.database.get_due_reminder_tasks()
+        if not due_tasks:
+            return
+
+        task = due_tasks[0]
+        self.app_state.database.mark_reminder_sent(task.id)
+        self._show_reminder_popup(task)
+
+    def _show_reminder_popup(self, task):
+        try:
+            seconds_left = (deadline_datetime(task.due_date) - datetime.now()).total_seconds()
+            remaining = human_remaining(seconds_left)
+        except ValueError:
+            remaining = "未知"
+
+        content = BoxLayout(orientation="vertical", spacing=dp(12), padding=dp(16))
+        detail_text = (
+            f"任务：{task.title}\n"
+            f"剩余：{remaining}\n"
+            f"分类：{task.category} | 优先级：{task.priority_text}\n"
+            f"截止：{task.due_date}"
+        )
+        message = Label(
+            text=detail_text,
+            color=(0.12, 0.12, 0.12, 1),
+            halign="left",
+            valign="middle",
+            font_name=FONT_NAME,
+        )
+        message.bind(size=lambda widget, _value: setattr(widget, "text_size", widget.size))
+        content.add_widget(message)
+
+        buttons = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
+        later = Button(text="知道了", font_name=FONT_NAME)
+        open_detail = Button(
+            text="查看详情",
+            background_normal="",
+            background_color=(0.18, 0.55, 0.28, 1),
+            color=(1, 1, 1, 1),
+            font_name=FONT_NAME,
+        )
+        buttons.add_widget(later)
+        buttons.add_widget(open_detail)
+        content.add_widget(buttons)
+
+        popup = Popup(
+            title="任务即将截止",
+            content=content,
+            size_hint=(0.86, None),
+            height=dp(260),
+            title_font=FONT_NAME,
+            auto_dismiss=True,
+        )
+
+        def clear_popup(*_args):
+            self._active_reminder_popup = None
+
+        def jump_to_detail(*_args):
+            popup.dismiss()
+            self._go_detail(task.id)
+
+        later.bind(on_release=popup.dismiss)
+        open_detail.bind(on_release=jump_to_detail)
+        popup.bind(on_dismiss=clear_popup)
+        self._active_reminder_popup = popup
+        popup.open()

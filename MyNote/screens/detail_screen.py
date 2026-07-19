@@ -3,17 +3,16 @@
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
-from kivy.uix.checkbox import CheckBox
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
+from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
 
-from font_utils import ChineseSpinner, FONT_NAME
-from screens.add_screen import PRIORITY_VALUES
-
-
-PRIORITY_LABELS = {value: label for label, value in PRIORITY_VALUES.items()}
+from date_utils import normalize_date_text, today_text
+from font_utils import FONT_NAME
+from priority import PRIORITY_LABELS, PRIORITY_VALUES
+from ui_components import DatePickerField, PriorityPicker
 
 
 class DetailScreen(Screen):
@@ -30,7 +29,9 @@ class DetailScreen(Screen):
             orientation="vertical",
             padding=(dp(16), dp(16), dp(16), dp(16)),
             spacing=dp(12),
+            size_hint_y=None,
         )
+        root.bind(minimum_height=root.setter("height"))
 
         header = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(8))
         back = Button(text="<", size_hint_x=None, width=dp(52), font_name=FONT_NAME)
@@ -61,42 +62,46 @@ class DetailScreen(Screen):
             padding=(dp(12), dp(12), dp(12), dp(12)),
             font_name=FONT_NAME,
         )
-        self.date_input = TextInput(
-            hint_text="截止日期",
+        self.date_picker = DatePickerField(initial_date=today_text())
+
+        option_row = BoxLayout(size_hint_y=None, height=dp(74), spacing=dp(8))
+        self.priority_picker = PriorityPicker(initial_value=PRIORITY_VALUES["普通"])
+        category_box = BoxLayout(orientation="vertical", spacing=dp(4))
+        category_label = Label(
+            text="分类",
+            size_hint_y=None,
+            height=dp(18),
+            halign="left",
+            valign="middle",
+            color=(0.34, 0.34, 0.34, 1),
+            font_size=dp(12),
+            font_name=FONT_NAME,
+        )
+        category_label.bind(size=lambda widget, _value: setattr(widget, "text_size", widget.size))
+        self.category_input = TextInput(
+            hint_text="分类",
             multiline=False,
             size_hint_y=None,
             height=dp(52),
             padding=(dp(12), dp(14), dp(12), dp(10)),
             font_name=FONT_NAME,
         )
+        category_box.add_widget(category_label)
+        category_box.add_widget(self.category_input)
+        option_row.add_widget(self.priority_picker)
+        option_row.add_widget(category_box)
 
-        option_row = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(8))
-        self.priority_spinner = ChineseSpinner(
-            text="普通",
-            values=("普通", "重要", "紧急"),
+        self.status_button = Button(
+            text="标记完成",
+            size_hint_y=None,
+            height=dp(46),
+            background_normal="",
+            background_color=(0.26, 0.42, 0.64, 1),
+            color=(1, 1, 1, 1),
             font_name=FONT_NAME,
         )
-        self.category_input = TextInput(
-            hint_text="分类",
-            multiline=False,
-            padding=(dp(12), dp(14), dp(12), dp(10)),
-            font_name=FONT_NAME,
-        )
-        option_row.add_widget(self.priority_spinner)
-        option_row.add_widget(self.category_input)
-
-        status_row = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
-        self.status_checkbox = CheckBox(size_hint_x=None, width=dp(48))
-        status_label = Label(
-            text="已完成",
-            color=(0.12, 0.12, 0.12, 1),
-            halign="left",
-            valign="middle",
-            font_name=FONT_NAME,
-        )
-        status_label.bind(size=lambda widget, _value: setattr(widget, "text_size", widget.size))
-        status_row.add_widget(self.status_checkbox)
-        status_row.add_widget(status_label)
+        self.status_button.bind(on_release=lambda *_: self._toggle_status())
+        self._is_done = False
 
         self.meta_label = Label(
             text="",
@@ -137,14 +142,17 @@ class DetailScreen(Screen):
         root.add_widget(header)
         root.add_widget(self.title_input)
         root.add_widget(self.content_input)
-        root.add_widget(self.date_input)
+        root.add_widget(self.date_picker)
         root.add_widget(option_row)
-        root.add_widget(status_row)
+        root.add_widget(self.status_button)
         root.add_widget(self.meta_label)
         root.add_widget(self.error_label)
         root.add_widget(buttons)
-        root.add_widget(Label(font_name=FONT_NAME))
-        self.add_widget(root)
+        root.add_widget(Label(size_hint_y=None, height=dp(12), font_name=FONT_NAME))
+
+        scroll = ScrollView()
+        scroll.add_widget(root)
+        self.add_widget(scroll)
 
     def load_task(self, task_id):
         self.task_id = task_id
@@ -154,10 +162,11 @@ class DetailScreen(Screen):
             return
         self.title_input.text = task.title
         self.content_input.text = task.content
-        self.date_input.text = task.due_date
-        self.priority_spinner.text = PRIORITY_LABELS.get(task.priority, "普通")
+        self.date_picker.set_date(task.due_date or today_text())
+        self.priority_picker.set_priority(PRIORITY_LABELS.get(task.priority, "普通"))
         self.category_input.text = task.category
-        self.status_checkbox.active = task.is_done
+        self._is_done = task.is_done
+        self._refresh_status_button()
         self.error_label.text = ""
         self.meta_label.text = (
             f"创建时间: {task.create_time}\n"
@@ -170,22 +179,40 @@ class DetailScreen(Screen):
             self.error_label.text = "任务标题不能为空"
             return
 
+        try:
+            due_date = normalize_date_text(self.date_picker.get_date())
+        except ValueError:
+            self.error_label.text = "截止日期必须为 YYYY-MM-DD"
+            return
+
         self.app_state.database.update_task(
             task_id=self.task_id,
             title=title,
             content=self.content_input.text.strip(),
-            due_date=self.date_input.text.strip(),
-            status=1 if self.status_checkbox.active else 0,
-            priority=PRIORITY_VALUES[self.priority_spinner.text],
+            due_date=due_date,
+            status=1 if self._is_done else 0,
+            priority=self.priority_picker.priority_value,
             category=self.category_input.text.strip() or "默认",
         )
         self._back_home()
+
+    def _toggle_status(self):
+        self._is_done = not self._is_done
+        self._refresh_status_button()
+
+    def _refresh_status_button(self):
+        if self._is_done:
+            self.status_button.text = "恢复为待办"
+            self.status_button.background_color = (0.62, 0.56, 0.42, 1)
+        else:
+            self.status_button.text = "标记完成"
+            self.status_button.background_color = (0.26, 0.42, 0.64, 1)
 
     def _confirm_delete(self):
         content = BoxLayout(orientation="vertical", spacing=dp(12), padding=dp(16))
         content.add_widget(
             Label(
-                text="是否删除该任务？",
+                text="是否将该任务移入回收站？",
                 color=(0.12, 0.12, 0.12, 1),
                 font_name=FONT_NAME,
             )
@@ -194,7 +221,7 @@ class DetailScreen(Screen):
         buttons = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
         cancel = Button(text="取消", font_name=FONT_NAME)
         confirm = Button(
-            text="确认删除",
+            text="移入回收站",
             background_normal="",
             background_color=(0.75, 0.18, 0.16, 1),
             color=(1, 1, 1, 1),
@@ -222,4 +249,3 @@ class DetailScreen(Screen):
 
     def _back_home(self):
         self.manager.current = "home"
-

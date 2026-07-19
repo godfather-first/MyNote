@@ -9,10 +9,15 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
-from models import Task
+from date_utils import deadline_datetime
+from models import DeletedTask, Task
+
+
+DEFAULT_REMINDER_THRESHOLD_MINUTES = 15
+RECYCLE_BIN_RETENTION_DAYS = 10
 
 
 class TaskDatabase:
@@ -27,6 +32,8 @@ class TaskDatabase:
         self.connection.row_factory = sqlite3.Row
         self._create_table()
         self._migrate_schema()
+        self._ensure_default_settings()
+        self.purge_expired_deleted_tasks()
 
     def _create_table(self) -> None:
         self.connection.execute(
@@ -37,7 +44,37 @@ class TaskDatabase:
                 content TEXT DEFAULT '',
                 status INTEGER DEFAULT 0,
                 create_time TEXT NOT NULL,
-                update_time TEXT NOT NULL
+                update_time TEXT NOT NULL,
+                due_date TEXT DEFAULT '',
+                priority INTEGER DEFAULT 0,
+                category TEXT DEFAULT '默认',
+                reminder_sent INTEGER DEFAULT 0
+            )
+            """
+        )
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS deleted_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                original_task_id INTEGER,
+                title TEXT NOT NULL,
+                content TEXT DEFAULT '',
+                status INTEGER DEFAULT 0,
+                create_time TEXT NOT NULL,
+                update_time TEXT NOT NULL,
+                due_date TEXT DEFAULT '',
+                priority INTEGER DEFAULT 0,
+                category TEXT DEFAULT '默认',
+                reminder_sent INTEGER DEFAULT 0,
+                deleted_time TEXT NOT NULL
+            )
+            """
+        )
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
             )
             """
         )
@@ -57,6 +94,19 @@ class TaskDatabase:
         if "category" not in columns:
             self.connection.execute("ALTER TABLE tasks ADD COLUMN category TEXT DEFAULT '默认'")
             self.connection.commit()
+        if "reminder_sent" not in columns:
+            self.connection.execute("ALTER TABLE tasks ADD COLUMN reminder_sent INTEGER DEFAULT 0")
+            self.connection.commit()
+
+    def _ensure_default_settings(self) -> None:
+        self.connection.execute(
+            """
+            INSERT OR IGNORE INTO app_settings (key, value)
+            VALUES ('reminder_threshold_minutes', ?)
+            """,
+            (str(DEFAULT_REMINDER_THRESHOLD_MINUTES),),
+        )
+        self.connection.commit()
 
     def add_task(
         self,
@@ -71,9 +121,9 @@ class TaskDatabase:
             """
             INSERT INTO tasks (
                 title, content, status, create_time, update_time,
-                due_date, priority, category
+                due_date, priority, category, reminder_sent
             )
-            VALUES (?, ?, 0, ?, ?, ?, ?, ?)
+            VALUES (?, ?, 0, ?, ?, ?, ?, ?, 0)
             """,
             (title, content, now, now, due_date, priority, category),
         )
@@ -84,7 +134,7 @@ class TaskDatabase:
         rows = self.connection.execute(
             """
             SELECT id, title, content, status, create_time, update_time,
-                   due_date, priority, category
+                   due_date, priority, category, reminder_sent
             FROM tasks
             ORDER BY status ASC, priority DESC, id DESC
             """
@@ -95,7 +145,7 @@ class TaskDatabase:
         row = self.connection.execute(
             """
             SELECT id, title, content, status, create_time, update_time,
-                   due_date, priority, category
+                   due_date, priority, category, reminder_sent
             FROM tasks
             WHERE id = ?
             """,
@@ -113,26 +163,198 @@ class TaskDatabase:
         priority: int = 0,
         category: str = "默认",
     ) -> None:
+        current = self.get_task(task_id)
+        reminder_sent = current.reminder_sent if current else 0
+        if current and current.due_date != due_date:
+            reminder_sent = 0
         self.connection.execute(
             """
             UPDATE tasks
             SET title = ?, content = ?, due_date = ?, status = ?,
-                priority = ?, category = ?, update_time = ?
+                priority = ?, category = ?, reminder_sent = ?, update_time = ?
             WHERE id = ?
             """,
-            (title, content, due_date, status, priority, category, self._now(), task_id),
+            (
+                title,
+                content,
+                due_date,
+                status,
+                priority,
+                category,
+                reminder_sent,
+                self._now(),
+                task_id,
+            ),
         )
         self.connection.commit()
 
     def set_status(self, task_id: int, status: int) -> None:
+        reminder_sent = 0 if status == 0 else 1
         self.connection.execute(
-            "UPDATE tasks SET status = ?, update_time = ? WHERE id = ?",
-            (status, self._now(), task_id),
+            "UPDATE tasks SET status = ?, reminder_sent = ?, update_time = ? WHERE id = ?",
+            (status, reminder_sent, self._now(), task_id),
         )
         self.connection.commit()
 
     def delete_task(self, task_id: int) -> None:
+        task = self.get_task(task_id)
+        if task is None:
+            return
+        self.connection.execute(
+            """
+            INSERT INTO deleted_tasks (
+                original_task_id, title, content, status, create_time, update_time,
+                due_date, priority, category, reminder_sent, deleted_time
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                task.id,
+                task.title,
+                task.content,
+                task.status,
+                task.create_time,
+                task.update_time,
+                task.due_date,
+                task.priority,
+                task.category,
+                task.reminder_sent,
+                self._now(),
+            ),
+        )
         self.connection.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        self.connection.commit()
+
+    def get_deleted_tasks(self) -> list[DeletedTask]:
+        self.purge_expired_deleted_tasks()
+        rows = self.connection.execute(
+            """
+            SELECT id, original_task_id, title, content, status, create_time, update_time,
+                   due_date, priority, category, reminder_sent, deleted_time
+            FROM deleted_tasks
+            ORDER BY deleted_time DESC, id DESC
+            """
+        ).fetchall()
+        return [self._row_to_deleted_task(row) for row in rows]
+
+    def restore_deleted_task(self, deleted_task_id: int) -> int | None:
+        row = self.connection.execute(
+            """
+            SELECT id, original_task_id, title, content, status, create_time, update_time,
+                   due_date, priority, category, reminder_sent, deleted_time
+            FROM deleted_tasks
+            WHERE id = ?
+            """,
+            (deleted_task_id,),
+        ).fetchone()
+        if row is None:
+            return None
+
+        deleted_task = self._row_to_deleted_task(row)
+        cursor = self.connection.execute(
+            """
+            INSERT INTO tasks (
+                title, content, status, create_time, update_time,
+                due_date, priority, category, reminder_sent
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                deleted_task.title,
+                deleted_task.content,
+                deleted_task.status,
+                deleted_task.create_time,
+                self._now(),
+                deleted_task.due_date,
+                deleted_task.priority,
+                deleted_task.category,
+                deleted_task.reminder_sent,
+            ),
+        )
+        self.connection.execute("DELETE FROM deleted_tasks WHERE id = ?", (deleted_task_id,))
+        self.connection.commit()
+        return int(cursor.lastrowid)
+
+    def purge_expired_deleted_tasks(
+        self,
+        retention_days: int = RECYCLE_BIN_RETENTION_DAYS,
+        now: datetime | None = None,
+    ) -> int:
+        cutoff = (now or datetime.now()) - timedelta(days=retention_days)
+        cursor = self.connection.execute(
+            "DELETE FROM deleted_tasks WHERE deleted_time < ?",
+            (cutoff.strftime("%Y-%m-%d %H:%M:%S"),),
+        )
+        self.connection.commit()
+        return int(cursor.rowcount)
+
+    def get_setting(self, key: str, default: str = "") -> str:
+        row = self.connection.execute(
+            "SELECT value FROM app_settings WHERE key = ?",
+            (key,),
+        ).fetchone()
+        return row["value"] if row else default
+
+    def set_setting(self, key: str, value: str) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO app_settings (key, value)
+            VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            (key, value),
+        )
+        self.connection.commit()
+
+    def get_reminder_threshold_minutes(self) -> int:
+        raw = self.get_setting(
+            "reminder_threshold_minutes",
+            str(DEFAULT_REMINDER_THRESHOLD_MINUTES),
+        )
+        try:
+            threshold = int(raw)
+        except ValueError:
+            threshold = DEFAULT_REMINDER_THRESHOLD_MINUTES
+        return max(1, min(threshold, 24 * 60))
+
+    def set_reminder_threshold_minutes(self, minutes: int) -> None:
+        self.set_setting("reminder_threshold_minutes", str(max(1, min(minutes, 24 * 60))))
+
+    def get_due_reminder_tasks(
+        self,
+        now: datetime | None = None,
+        threshold_minutes: int | None = None,
+    ) -> list[Task]:
+        current_time = now or datetime.now()
+        threshold = threshold_minutes or self.get_reminder_threshold_minutes()
+        rows = self.connection.execute(
+            """
+            SELECT id, title, content, status, create_time, update_time,
+                   due_date, priority, category, reminder_sent
+            FROM tasks
+            WHERE status = 0
+              AND reminder_sent = 0
+              AND due_date != ''
+            ORDER BY priority DESC, id DESC
+            """
+        ).fetchall()
+
+        due_tasks = []
+        for row in rows:
+            task = self._row_to_task(row)
+            try:
+                seconds_left = (deadline_datetime(task.due_date) - current_time).total_seconds()
+            except ValueError:
+                continue
+            if 0 <= seconds_left <= threshold * 60:
+                due_tasks.append(task)
+        return due_tasks
+
+    def mark_reminder_sent(self, task_id: int) -> None:
+        self.connection.execute(
+            "UPDATE tasks SET reminder_sent = 1, update_time = ? WHERE id = ?",
+            (self._now(), task_id),
+        )
         self.connection.commit()
 
     def close(self) -> None:
@@ -154,4 +376,22 @@ class TaskDatabase:
             due_date=row["due_date"] or "",
             priority=int(row["priority"] or 0),
             category=row["category"] or "默认",
+            reminder_sent=int(row["reminder_sent"] or 0),
+        )
+
+    @staticmethod
+    def _row_to_deleted_task(row: sqlite3.Row) -> DeletedTask:
+        return DeletedTask(
+            id=row["id"],
+            original_task_id=row["original_task_id"],
+            title=row["title"],
+            content=row["content"] or "",
+            status=int(row["status"]),
+            create_time=row["create_time"],
+            update_time=row["update_time"],
+            due_date=row["due_date"] or "",
+            priority=int(row["priority"] or 0),
+            category=row["category"] or "默认",
+            reminder_sent=int(row["reminder_sent"] or 0),
+            deleted_time=row["deleted_time"],
         )
