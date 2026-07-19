@@ -1,150 +1,111 @@
-"""Task detail and edit screen."""
+"""Task detail, edit, completion, and delete screen."""
 
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
 
 from date_utils import normalize_date_text, today_text
 from font_utils import FONT_NAME
-from priority import PRIORITY_LABELS, PRIORITY_VALUES
-from ui_components import DatePickerField, FormScrollView, PriorityPicker, StableTextInput
+from models import DEFAULT_CATEGORY, STATUS_ACTIVE, STATUS_DONE
+from priority import PRIORITY_VALUES
+from ui_components import (
+    DANGER,
+    PRIMARY,
+    SUCCESS,
+    TEXT,
+    DatePickerField,
+    FormScrollView,
+    MobileButton,
+    MobileTextInput,
+    PriorityPicker,
+    bind_text_size,
+)
 
 
 class DetailScreen(Screen):
-    """Edit, complete, and delete a task."""
-
     def __init__(self, app_state, **kwargs):
         super().__init__(**kwargs)
         self.app_state = app_state
         self.task_id = None
+        self._status = STATUS_ACTIVE
         self._build_ui()
 
     def _build_ui(self):
         root = BoxLayout(
             orientation="vertical",
-            padding=(dp(16), dp(16), dp(16), dp(28)),
             spacing=dp(14),
+            padding=(dp(16), dp(16), dp(16), dp(28)),
             size_hint_y=None,
         )
         root.bind(minimum_height=root.setter("height"))
 
         header = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(8))
-        back = Button(text="<", size_hint_x=None, width=dp(56), font_name=FONT_NAME)
+        back = MobileButton(text="<", size_hint_x=None, width=dp(60), background_color=(0.28, 0.28, 0.28, 1), color=(1, 1, 1, 1))
         back.bind(on_release=lambda *_: self._back_home())
-        title = Label(
-            text="任务详情",
-            color=(0.12, 0.12, 0.12, 1),
-            font_size=dp(22),
-            bold=True,
-            font_name=FONT_NAME,
-        )
+        title = Label(text="任务详情", color=TEXT, bold=True, font_size=dp(22), font_name=FONT_NAME)
         header.add_widget(back)
         header.add_widget(title)
 
-        self.title_input = StableTextInput(
-            hint_text="任务标题 *",
-            multiline=False,
-            size_hint_y=None,
-            height=dp(58),
-            padding=(dp(14), dp(16), dp(14), dp(10)),
-            font_name=FONT_NAME,
-        )
-        self.content_input = StableTextInput(
+        self.title_input = MobileTextInput(hint_text="任务标题 *", multiline=False)
+        self.content_input = MobileTextInput(
             hint_text="备注",
             multiline=True,
-            size_hint_y=None,
             height=dp(150),
             padding=(dp(14), dp(14), dp(14), dp(14)),
-            font_name=FONT_NAME,
         )
         self.date_picker = DatePickerField(initial_date=today_text())
-
         self.priority_picker = PriorityPicker(initial_value=PRIORITY_VALUES["普通"])
-        category_box = BoxLayout(orientation="vertical", spacing=dp(4), size_hint_y=None, height=dp(80))
-        category_label = Label(
-            text="分类",
-            size_hint_y=None,
-            height=dp(18),
-            halign="left",
-            valign="middle",
-            color=(0.34, 0.34, 0.34, 1),
-            font_size=dp(12),
-            font_name=FONT_NAME,
-        )
-        category_label.bind(size=lambda widget, _value: setattr(widget, "text_size", widget.size))
-        self.category_input = StableTextInput(
-            hint_text="分类",
-            multiline=False,
-            size_hint_y=None,
-            height=dp(58),
-            padding=(dp(14), dp(16), dp(14), dp(10)),
-            font_name=FONT_NAME,
-        )
-        category_box.add_widget(category_label)
-        category_box.add_widget(self.category_input)
-
-        self.status_button = Button(
-            text="标记完成",
-            size_hint_y=None,
-            height=dp(58),
-            background_normal="",
-            background_color=(0.26, 0.42, 0.64, 1),
-            color=(1, 1, 1, 1),
-            font_name=FONT_NAME,
-        )
+        self.category_input = self._build_category_input()
+        self.status_button = MobileButton(text="标记完成", background_color=PRIMARY, color=(1, 1, 1, 1))
         self.status_button.bind(on_release=lambda *_: self._toggle_status())
-        self._is_done = False
-
-        self.meta_label = Label(
-            text="",
-            size_hint_y=None,
-            height=dp(54),
-            color=(0.45, 0.45, 0.45, 1),
-            font_size=dp(13),
-            font_name=FONT_NAME,
+        self.meta_label = bind_text_size(
+            Label(
+                text="",
+                size_hint_y=None,
+                height=dp(58),
+                halign="left",
+                valign="middle",
+                color=(0.42, 0.42, 0.42, 1),
+                font_size=dp(13),
+                font_name=FONT_NAME,
+            )
         )
-        self.error_label = Label(
-            text="",
-            size_hint_y=None,
-            height=dp(28),
-            color=(0.75, 0.18, 0.16, 1),
-            font_name=FONT_NAME,
+        self.error_label = bind_text_size(
+            Label(
+                text="",
+                size_hint_y=None,
+                height=dp(30),
+                halign="left",
+                valign="middle",
+                color=DANGER,
+                font_size=dp(13),
+                font_name=FONT_NAME,
+            )
         )
-
         buttons = BoxLayout(size_hint_y=None, height=dp(58), spacing=dp(8))
-        save = Button(
-            text="保存",
-            background_normal="",
-            background_color=(0.18, 0.55, 0.28, 1),
-            color=(1, 1, 1, 1),
-            font_name=FONT_NAME,
-        )
-        delete = Button(
-            text="删除",
-            background_normal="",
-            background_color=(0.75, 0.18, 0.16, 1),
-            color=(1, 1, 1, 1),
-            font_name=FONT_NAME,
-        )
+        save = MobileButton(text="保存", background_color=SUCCESS, color=(1, 1, 1, 1))
+        delete = MobileButton(text="删除", background_color=DANGER, color=(1, 1, 1, 1))
         save.bind(on_release=lambda *_: self._save())
         delete.bind(on_release=lambda *_: self._confirm_delete())
         buttons.add_widget(save)
         buttons.add_widget(delete)
 
-        root.add_widget(header)
-        root.add_widget(self.title_input)
-        root.add_widget(self.content_input)
-        root.add_widget(self.date_picker)
-        root.add_widget(self.priority_picker)
-        root.add_widget(category_box)
-        root.add_widget(self.status_button)
-        root.add_widget(self.meta_label)
-        root.add_widget(self.error_label)
-        root.add_widget(buttons)
-        root.add_widget(Label(size_hint_y=None, height=dp(180), font_name=FONT_NAME))
+        for widget in (
+            header,
+            self.title_input,
+            self.content_input,
+            self.date_picker,
+            self.priority_picker,
+            self.category_input.parent,
+            self.status_button,
+            self.meta_label,
+            self.error_label,
+            buttons,
+            Label(size_hint_y=None, height=dp(190), font_name=FONT_NAME),
+        ):
+            root.add_widget(widget)
 
         scroll = FormScrollView(do_scroll_x=False, scroll_distance=dp(32), scroll_timeout=420)
         scroll.add_widget(root)
@@ -156,6 +117,26 @@ class DetailScreen(Screen):
         )
         self.add_widget(scroll)
 
+    def _build_category_input(self):
+        box = BoxLayout(orientation="vertical", spacing=dp(4), size_hint_y=None, height=dp(86))
+        box.add_widget(
+            bind_text_size(
+                Label(
+                    text="分类",
+                    size_hint_y=None,
+                    height=dp(20),
+                    halign="left",
+                    valign="middle",
+                    color=(0.42, 0.42, 0.42, 1),
+                    font_size=dp(12),
+                    font_name=FONT_NAME,
+                )
+            )
+        )
+        field = MobileTextInput(hint_text="分类", multiline=False)
+        box.add_widget(field)
+        return field
+
     def load_task(self, task_id):
         self.task_id = task_id
         task = self.app_state.database.get_task(task_id)
@@ -165,89 +146,70 @@ class DetailScreen(Screen):
         self.title_input.text = task.title
         self.content_input.text = task.content
         self.date_picker.set_date(task.due_date or today_text())
-        self.priority_picker.set_priority(PRIORITY_LABELS.get(task.priority, "普通"))
+        self.priority_picker.set_priority(task.priority)
         self.category_input.text = task.category
-        self._is_done = task.is_done
-        self._refresh_status_button()
+        self._status = task.status
+        self.meta_label.text = f"创建时间：{task.create_time}\n更新时间：{task.update_time}"
         self.error_label.text = ""
-        self.meta_label.text = (
-            f"创建时间: {task.create_time}\n"
-            f"更新时间: {task.update_time}"
-        )
+        self._refresh_status_button()
 
     def _save(self):
         title = self.title_input.text.strip()
         if not title:
             self.error_label.text = "任务标题不能为空"
             return
-
         try:
             due_date = normalize_date_text(self.date_picker.get_date())
         except ValueError:
             self.error_label.text = "截止日期必须为 YYYY-MM-DD"
             return
-
-        self.app_state.database.update_task(
+        saved = self.app_state.database.update_task(
             task_id=self.task_id,
             title=title,
             content=self.content_input.text.strip(),
             due_date=due_date,
-            status=1 if self._is_done else 0,
+            status=self._status,
             priority=self.priority_picker.priority_value,
-            category=self.category_input.text.strip() or "默认",
+            category=self.category_input.text.strip() or DEFAULT_CATEGORY,
         )
+        if not saved:
+            self.error_label.text = "任务不存在"
+            return
         self._back_home()
 
     def _toggle_status(self):
-        self._is_done = not self._is_done
+        self._status = STATUS_ACTIVE if self._status == STATUS_DONE else STATUS_DONE
         self._refresh_status_button()
 
     def _refresh_status_button(self):
-        if self._is_done:
+        if self._status == STATUS_DONE:
             self.status_button.text = "恢复为待办"
             self.status_button.background_color = (0.62, 0.56, 0.42, 1)
         else:
             self.status_button.text = "标记完成"
-            self.status_button.background_color = (0.26, 0.42, 0.64, 1)
+            self.status_button.background_color = PRIMARY
 
     def _confirm_delete(self):
-        content = BoxLayout(orientation="vertical", spacing=dp(12), padding=dp(16))
-        content.add_widget(
-            Label(
-                text="是否将该任务移入回收站？",
-                color=(0.12, 0.12, 0.12, 1),
-                font_name=FONT_NAME,
-            )
-        )
-
-        buttons = BoxLayout(size_hint_y=None, height=dp(56), spacing=dp(8))
-        cancel = Button(text="取消", font_name=FONT_NAME)
-        confirm = Button(
-            text="移入回收站",
-            background_normal="",
-            background_color=(0.75, 0.18, 0.16, 1),
-            color=(1, 1, 1, 1),
-            font_name=FONT_NAME,
-        )
+        content = BoxLayout(orientation="vertical", spacing=dp(14), padding=dp(16))
+        content.add_widget(Label(text="是否将该任务移入回收站？", color=TEXT, font_name=FONT_NAME))
+        buttons = BoxLayout(size_hint_y=None, height=dp(58), spacing=dp(8))
+        cancel = MobileButton(text="取消", background_color=(0.82, 0.82, 0.78, 1), color=TEXT)
+        confirm = MobileButton(text="移入回收站", background_color=DANGER, color=(1, 1, 1, 1))
         buttons.add_widget(cancel)
         buttons.add_widget(confirm)
         content.add_widget(buttons)
-
-        popup = Popup(
-            title="确认",
-            content=content,
-            size_hint=(0.8, None),
-            height=dp(210),
-            title_font=FONT_NAME,
-        )
+        popup = Popup(title="确认", content=content, size_hint=(0.82, None), height=dp(220), title_font=FONT_NAME)
         cancel.bind(on_release=popup.dismiss)
         confirm.bind(on_release=lambda *_: self._delete_task(popup))
         popup.open()
 
     def _delete_task(self, popup):
         popup.dismiss()
-        self.app_state.database.delete_task(self.task_id)
+        if self.task_id is not None:
+            self.app_state.database.delete_task(self.task_id)
         self._back_home()
 
     def _back_home(self):
+        home = self.manager.get_screen("home")
+        home.refresh()
         self.manager.current = "home"

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from database import TaskDatabase
+from date_utils import today_text
 from models import Task
 from screens.home_screen import FILTER_ORDER, HomeScreen, TaskRow
 
@@ -45,9 +46,10 @@ def _close_screen(screen):
 
 def test_home_search_and_filters_match_required_logic(tmp_path):
     db = TaskDatabase(db_dir=str(tmp_path))
-    active_id = db.add_task("写周报", content="包含销售数据", due_date="2026-07-19", priority=0)
-    done_id = db.add_task("买牛奶", content="路上顺手", due_date="2026-07-20", priority=0)
-    important_id = db.add_task("处理合同", content="客户急迫", due_date="2026-07-19", priority=2)
+    today = today_text()
+    active_id = db.add_task("写周报", content="包含销售数据", due_date=today, priority=0)
+    done_id = db.add_task("买牛奶", content="路上顺手", due_date="2099-12-31", priority=0)
+    important_id = db.add_task("处理合同", content="客户急迫", due_date=today, priority=2)
     db.set_status(done_id, 1)
 
     screen = HomeScreen(app_state=AppState(db))

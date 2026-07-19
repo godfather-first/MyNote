@@ -1,9 +1,19 @@
 from models import Task
 from kivy.uix.popup import Popup
+from kivy.uix.label import Label
 from screens.add_screen import AddScreen
 from screens.detail_screen import DetailScreen
 from screens.home_screen import TASK_PREVIEW_COLOR, TaskRow
 from ui_components import DatePickerField, FormScrollView, PriorityPicker, StableTextInput
+from font_utils import FONT_NAME, register_chinese_font
+
+
+def test_font_name_is_registered_even_without_system_cjk_font():
+    assert register_chinese_font() == FONT_NAME
+
+    label = Label(text="字体回退", font_name=FONT_NAME)
+
+    assert label.font_name == FONT_NAME
 
 
 def test_stable_text_input_disables_mobile_copy_paste_bubble():

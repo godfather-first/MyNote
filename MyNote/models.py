@@ -5,10 +5,13 @@ from dataclasses import dataclass
 from priority import priority_label
 
 
-@dataclass
-class Task:
-    """A single local task note."""
+STATUS_ACTIVE = 0
+STATUS_DONE = 1
+DEFAULT_CATEGORY = "默认"
 
+
+@dataclass(frozen=True)
+class Task:
     id: int | None
     title: str
     content: str
@@ -17,22 +20,20 @@ class Task:
     update_time: str
     due_date: str = ""
     priority: int = 0
-    category: str = "默认"
+    category: str = DEFAULT_CATEGORY
     reminder_sent: int = 0
 
     @property
     def is_done(self) -> bool:
-        return self.status == 1
+        return self.status == STATUS_DONE
 
     @property
     def priority_text(self) -> str:
         return priority_label(self.priority)
 
 
-@dataclass
+@dataclass(frozen=True)
 class DeletedTask:
-    """A task archived in the recycle bin."""
-
     id: int
     original_task_id: int | None
     title: str

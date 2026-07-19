@@ -96,6 +96,7 @@ def test_reminder_threshold_setting_is_configurable_and_clamped(tmp_path):
 
 def test_legacy_deleted_tasks_table_is_migrated(tmp_path):
     db_path = tmp_path / "tasks.db"
+    old_update_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     connection = sqlite3.connect(db_path)
     connection.execute(
         """
@@ -108,6 +109,13 @@ def test_legacy_deleted_tasks_table_is_migrated(tmp_path):
             update_time TEXT NOT NULL
         )
         """
+    )
+    connection.execute(
+        """
+        INSERT INTO deleted_tasks (title, content, status, create_time, update_time)
+        VALUES ('旧回收站任务', '', 0, ?, ?)
+        """,
+        (old_update_time, old_update_time),
     )
     connection.commit()
     connection.close()
@@ -126,4 +134,6 @@ def test_legacy_deleted_tasks_table_is_migrated(tmp_path):
         "reminder_sent",
         "deleted_time",
     }.issubset(columns)
+    deleted = db.get_deleted_tasks()
+    assert deleted[0].deleted_time == old_update_time
     db.close()
