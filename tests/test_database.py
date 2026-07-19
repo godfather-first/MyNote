@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import sqlite3
 
 from database import RECYCLE_BIN_RETENTION_DAYS, TaskDatabase
 
@@ -90,4 +91,39 @@ def test_reminder_threshold_setting_is_configurable_and_clamped(tmp_path):
 
     db.set_reminder_threshold_minutes(99999)
     assert db.get_reminder_threshold_minutes() == 1440
+    db.close()
+
+
+def test_legacy_deleted_tasks_table_is_migrated(tmp_path):
+    db_path = tmp_path / "tasks.db"
+    connection = sqlite3.connect(db_path)
+    connection.execute(
+        """
+        CREATE TABLE deleted_tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            content TEXT DEFAULT '',
+            status INTEGER DEFAULT 0,
+            create_time TEXT NOT NULL,
+            update_time TEXT NOT NULL
+        )
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    db = TaskDatabase(db_dir=str(tmp_path))
+    columns = {
+        row["name"]
+        for row in db.connection.execute("PRAGMA table_info(deleted_tasks)").fetchall()
+    }
+
+    assert {
+        "original_task_id",
+        "due_date",
+        "priority",
+        "category",
+        "reminder_sent",
+        "deleted_time",
+    }.issubset(columns)
     db.close()

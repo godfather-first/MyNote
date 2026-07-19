@@ -7,12 +7,14 @@ login, cloud sync, a server, or network access.
 ## Files
 
 - `main.py`: Kivy app entry point and screen registration.
-- `database.py`: SQLite table creation and task CRUD operations.
-- `models.py`: `Task` data model.
-- `screens/home_screen.py`: home task list, status toggle, and long-press delete.
-- `screens/add_screen.py`: new task form.
-- `screens/detail_screen.py`: task detail, edit, complete, and delete form.
-- `assets/`: reserved for icons and images.
+- `database.py`: SQLite schema, migrations, task CRUD, recycle bin, and reminder settings.
+- `models.py`: task and deleted-task data models.
+- `screens/home_screen.py`: task list, search, filters, swipe delete, completion, and reminders.
+- `screens/add_screen.py`: mobile-first new task form.
+- `screens/detail_screen.py`: mobile-first task detail, edit, complete, and delete form.
+- `screens/recycle_bin_screen.py`: restore deleted tasks retained for ten days.
+- `ui_components.py`: reusable mobile-safe inputs, date picker, and priority picker.
+- `assets/`: optional bundled app icon, splash image, and CJK font files.
 - `requirements.txt`: local Python dependency list.
 - `buildozer.spec`: Android APK packaging configuration.
 
@@ -38,6 +40,8 @@ assets/SourceHanSansSC-Regular.otf
 ```
 
 The `buildozer.spec` file already includes `ttf`, `ttc`, and `otf` font files.
+If no bundled font is present, the app attempts to register common Android
+system CJK fonts before falling back to Roboto.
 
 ## Build Android APK
 
@@ -45,6 +49,10 @@ The repository includes a GitHub Actions workflow at
 `.github/workflows/build-apk.yml`. Push the project to GitHub or run the
 workflow manually from the Actions tab, then download the `MyNote-debug-apk`
 artifact after the workflow finishes.
+
+The Buildozer project root is `MyNote/`. Local build artifacts, virtual
+environments, logs, and desktop `tasks.db` files are excluded from the APK by
+`buildozer.spec`.
 
 Install it on an Android phone with:
 
@@ -54,7 +62,7 @@ adb install *.apk
 
 ## Database
 
-The app automatically creates `tasks.db` with the `tasks` table. The table
-contains `id`, `title`, `content`, `status`, `create_time`, `update_time`,
-and `due_date`. The `due_date` column supports the required optional deadline
-field while keeping everything local.
+The app creates `tasks.db` inside Kivy's writable `user_data_dir`, not inside
+the APK. The schema stores title, content, status, create/update timestamps,
+deadline date, priority, category, and one-shot reminder state. Deleted tasks
+move to `deleted_tasks` and are purged after ten days.

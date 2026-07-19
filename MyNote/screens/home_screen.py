@@ -11,13 +11,12 @@ from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
 from kivy.uix.scrollview import ScrollView
-from kivy.uix.textinput import TextInput
 from kivy.utils import escape_markup
 
 from date_utils import deadline_datetime, human_remaining
 from font_utils import FONT_NAME
 from priority import priority_option
-from ui_components import RoundedPanel
+from ui_components import RoundedPanel, StableTextInput
 
 
 FILTERS = [
@@ -28,6 +27,7 @@ FILTERS = [
     ("important", "重要"),
 ]
 FILTER_ORDER = [filter_key for filter_key, _text in FILTERS]
+TASK_PREVIEW_COLOR = (0.90, 0.68, 0.08, 1)
 
 
 def due_state(due_date: str, is_done: bool) -> tuple[str, tuple[float, float, float, float]]:
@@ -205,8 +205,8 @@ class TaskRow(RoundedPanel):
 
     def _set_title_preview(self, preview: bool):
         if preview:
-            self.title_label.text = f"[s]{escape_markup(self.task.title)}[/s]"
-            self.title_label.color = (0.72, 0.16, 0.16, 1)
+            self.title_label.text = self._title_text()
+            self.title_label.color = TASK_PREVIEW_COLOR
         else:
             self.title_label.text = self._title_text()
             self.title_label.color = (0.48, 0.48, 0.48, 1) if self.task.is_done else (0.12, 0.12, 0.12, 1)
@@ -244,24 +244,35 @@ class HomeScreen(Screen):
     def _build_ui(self):
         root = BoxLayout(orientation="vertical", spacing=0)
 
-        header = BoxLayout(size_hint_y=None, height=dp(58), spacing=dp(8), padding=(dp(12), dp(8)))
+        header = BoxLayout(size_hint_y=None, height=dp(64), spacing=dp(8), padding=(dp(12), dp(4)))
         title = Label(
             text="MyNote",
             halign="left",
             valign="middle",
             size_hint_y=None,
-            height=dp(42),
+            height=dp(56),
             font_size=dp(24),
             bold=True,
             color=(0.12, 0.12, 0.12, 1),
             font_name=FONT_NAME,
         )
         title.bind(size=lambda widget, _value: setattr(widget, "text_size", widget.size))
+        self.reminder_button = Button(
+            text="提醒",
+            size_hint=(None, None),
+            width=dp(68),
+            height=dp(56),
+            background_normal="",
+            background_color=(0.62, 0.56, 0.42, 1),
+            color=(1, 1, 1, 1),
+            font_name=FONT_NAME,
+        )
+        self.reminder_button.bind(on_release=lambda *_: self._open_reminder_settings())
         self.recycle_button = Button(
             text="回收站",
             size_hint=(None, None),
             width=dp(84),
-            height=dp(42),
+            height=dp(56),
             background_normal="",
             background_color=(0.26, 0.42, 0.64, 1),
             color=(1, 1, 1, 1),
@@ -269,14 +280,15 @@ class HomeScreen(Screen):
         )
         self.recycle_button.bind(on_release=lambda *_: self._go_recycle_bin())
         header.add_widget(title)
+        header.add_widget(self.reminder_button)
         header.add_widget(self.recycle_button)
 
-        self.search_input = TextInput(
+        self.search_input = StableTextInput(
             hint_text="搜索任务标题或备注",
             multiline=False,
             size_hint_y=None,
-            height=dp(46),
-            padding=(dp(14), dp(12), dp(14), dp(8)),
+            height=dp(56),
+            padding=(dp(14), dp(16), dp(14), dp(10)),
             font_name=FONT_NAME,
         )
         self.search_input.bind(text=lambda *_: self.refresh())
@@ -367,6 +379,8 @@ class HomeScreen(Screen):
         if self.add_button.collide_point(*touch.pos):
             return False
         if self.recycle_button.collide_point(*touch.pos):
+            return False
+        if self.reminder_button.collide_point(*touch.pos):
             return False
         self._filter_swipe_started_on_task = any(
             isinstance(widget, TaskRow) and widget.collide_point(*touch.pos)
@@ -461,43 +475,78 @@ class HomeScreen(Screen):
         self.app_state.database.delete_task(task_id)
         self.refresh()
 
-    def _confirm_delete(self, task_id):
+    def _open_reminder_settings(self):
         content = BoxLayout(orientation="vertical", spacing=dp(12), padding=dp(16))
         content.add_widget(
             Label(
-                text="是否将该任务移入回收站？",
+                text="到期前提醒时间",
+                size_hint_y=None,
+                height=dp(30),
                 color=(0.12, 0.12, 0.12, 1),
+                bold=True,
                 font_name=FONT_NAME,
             )
         )
+        threshold_input = StableTextInput(
+            text=str(self.app_state.database.get_reminder_threshold_minutes()),
+            hint_text="1-1440 分钟",
+            multiline=False,
+            input_filter="int",
+            size_hint_y=None,
+            height=dp(58),
+            padding=(dp(14), dp(16), dp(14), dp(10)),
+            font_name=FONT_NAME,
+        )
+        error = Label(
+            text="",
+            size_hint_y=None,
+            height=dp(26),
+            color=(0.75, 0.18, 0.16, 1),
+            font_size=dp(13),
+            font_name=FONT_NAME,
+        )
+        content.add_widget(threshold_input)
+        content.add_widget(error)
 
-        buttons = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
-        cancel = Button(text="取消", font_name=FONT_NAME)
-        confirm = Button(
-            text="移入回收站",
+        buttons = BoxLayout(size_hint_y=None, height=dp(56), spacing=dp(8))
+        close = Button(text="关闭", font_name=FONT_NAME)
+        save = Button(
+            text="保存",
             background_normal="",
-            background_color=(0.75, 0.18, 0.16, 1),
+            background_color=(0.18, 0.55, 0.28, 1),
             color=(1, 1, 1, 1),
             font_name=FONT_NAME,
         )
-        buttons.add_widget(cancel)
-        buttons.add_widget(confirm)
+        buttons.add_widget(close)
+        buttons.add_widget(save)
         content.add_widget(buttons)
 
         popup = Popup(
-            title="确认",
+            title="提醒设置",
             content=content,
-            size_hint=(0.8, None),
-            height=dp(190),
+            size_hint=(0.86, None),
+            height=dp(245),
             title_font=FONT_NAME,
+            auto_dismiss=True,
         )
-        cancel.bind(on_release=popup.dismiss)
-        confirm.bind(on_release=lambda *_: self._delete_task(task_id, popup))
-        popup.open()
 
-    def _delete_task(self, task_id, popup):
-        popup.dismiss()
-        self._archive_task(task_id)
+        def save_threshold(*_args):
+            try:
+                minutes = int(threshold_input.text.strip())
+            except ValueError:
+                error.text = "请输入 1 到 1440 的分钟数"
+                return
+            if minutes < 1 or minutes > 1440:
+                error.text = "请输入 1 到 1440 的分钟数"
+                return
+            self.app_state.database.set_reminder_threshold_minutes(minutes)
+            popup.dismiss()
+
+        close.bind(on_release=popup.dismiss)
+        save.bind(on_release=save_threshold)
+        popup.open()
+        threshold_input.focus = True
+        return popup
 
     def _poll_due_reminders(self, *_args):
         if self._active_reminder_popup is not None:
@@ -535,7 +584,7 @@ class HomeScreen(Screen):
         message.bind(size=lambda widget, _value: setattr(widget, "text_size", widget.size))
         content.add_widget(message)
 
-        buttons = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
+        buttons = BoxLayout(size_hint_y=None, height=dp(56), spacing=dp(8))
         later = Button(text="知道了", font_name=FONT_NAME)
         open_detail = Button(
             text="查看详情",
@@ -552,7 +601,7 @@ class HomeScreen(Screen):
             title="任务即将截止",
             content=content,
             size_hint=(0.86, None),
-            height=dp(260),
+            height=dp(280),
             title_font=FONT_NAME,
             auto_dismiss=True,
         )

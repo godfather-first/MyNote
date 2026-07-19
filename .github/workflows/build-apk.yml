@@ -66,6 +66,7 @@ jobs:
             patch \
             pkg-config \
             unzip \
+            xvfb \
             zip \
             zlib1g-dev
 
@@ -137,7 +138,16 @@ jobs:
         run: |
           set -eux
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install "cython<3" buildozer
+          python -m pip install "cython<3" buildozer pytest
+          python -m pip install -r "${{ steps.locate.outputs.project_dir }}/requirements.txt"
+
+      - name: Run tests before packaging
+        shell: bash
+        env:
+          KIVY_NO_ARGS: "1"
+        run: |
+          set -eux
+          xvfb-run -a python -m pytest -q "$GITHUB_WORKSPACE/tests"
 
       - name: Build debug APK
         working-directory: ${{ steps.locate.outputs.project_dir }}

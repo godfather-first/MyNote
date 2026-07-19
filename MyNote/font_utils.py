@@ -5,46 +5,40 @@ from __future__ import annotations
 from pathlib import Path
 
 from kivy.core.text import LabelBase
-from kivy.uix.spinner import Spinner, SpinnerOption
 
 
 FONT_NAME = "MyNoteCN"
+ASSET_FONT_NAMES = (
+    "NotoSansCJKsc-Regular.otf",
+    "SourceHanSansSC-Regular.otf",
+    "NotoSansSC-Regular.otf",
+    "DroidSansFallback.ttf",
+)
+SYSTEM_FONT_PATHS = (
+    Path("/system/fonts/NotoSansCJK-Regular.ttc"),
+    Path("/system/fonts/NotoSansSC-Regular.otf"),
+    Path("/system/fonts/NotoSansCJKsc-Regular.otf"),
+    Path("/system/fonts/SourceHanSansSC-Regular.otf"),
+    Path("/system/fonts/DroidSansFallback.ttf"),
+    Path("C:/Windows/Fonts/msyh.ttc"),
+    Path("C:/Windows/Fonts/simhei.ttf"),
+)
 
 
 def register_chinese_font() -> str:
     """Register a CJK-capable font and return the Kivy font name."""
 
     base_dir = Path(__file__).resolve().parent
-    candidates = [
-        base_dir / "assets" / "NotoSansCJKsc-Regular.otf",
-        base_dir / "assets" / "SourceHanSansSC-Regular.otf",
-        base_dir / "assets" / "msyh.ttc",
-        Path("C:/Windows/Fonts/msyh.ttc"),
-        Path("/system/fonts/NotoSansCJK-Regular.ttc"),
-        Path("/system/fonts/NotoSansSC-Regular.otf"),
-        Path("/system/fonts/DroidSansFallback.ttf"),
-    ]
+    candidates = [base_dir / "assets" / name for name in ASSET_FONT_NAMES]
+    candidates.extend(SYSTEM_FONT_PATHS)
 
     for font_path in candidates:
-        if font_path.exists():
+        if not font_path.exists():
+            continue
+        try:
             LabelBase.register(name=FONT_NAME, fn_regular=str(font_path))
             return FONT_NAME
+        except Exception:
+            continue
 
     return "Roboto"
-
-
-class ChineseSpinnerOption(SpinnerOption):
-    """Spinner dropdown button with Chinese font preset."""
-
-    def __init__(self, **kwargs):
-        kwargs.setdefault("font_name", FONT_NAME)
-        super().__init__(**kwargs)
-
-
-class ChineseSpinner(Spinner):
-    """Spinner that uses Chinese font in both the button and dropdown items."""
-
-    def __init__(self, **kwargs):
-        kwargs.setdefault("option_cls", ChineseSpinnerOption)
-        super().__init__(**kwargs)
-

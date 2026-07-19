@@ -25,14 +25,14 @@ class DetailScreen(Screen):
     def _build_ui(self):
         root = BoxLayout(
             orientation="vertical",
-            padding=(dp(16), dp(16), dp(16), dp(16)),
-            spacing=dp(12),
+            padding=(dp(16), dp(16), dp(16), dp(28)),
+            spacing=dp(14),
             size_hint_y=None,
         )
         root.bind(minimum_height=root.setter("height"))
 
-        header = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(8))
-        back = Button(text="<", size_hint_x=None, width=dp(52), font_name=FONT_NAME)
+        header = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(8))
+        back = Button(text="<", size_hint_x=None, width=dp(56), font_name=FONT_NAME)
         back.bind(on_release=lambda *_: self._back_home())
         title = Label(
             text="任务详情",
@@ -48,23 +48,22 @@ class DetailScreen(Screen):
             hint_text="任务标题 *",
             multiline=False,
             size_hint_y=None,
-            height=dp(52),
-            padding=(dp(12), dp(14), dp(12), dp(10)),
+            height=dp(58),
+            padding=(dp(14), dp(16), dp(14), dp(10)),
             font_name=FONT_NAME,
         )
         self.content_input = StableTextInput(
             hint_text="备注",
             multiline=True,
             size_hint_y=None,
-            height=dp(130),
-            padding=(dp(12), dp(12), dp(12), dp(12)),
+            height=dp(150),
+            padding=(dp(14), dp(14), dp(14), dp(14)),
             font_name=FONT_NAME,
         )
         self.date_picker = DatePickerField(initial_date=today_text())
 
-        option_row = BoxLayout(size_hint_y=None, height=dp(74), spacing=dp(8))
         self.priority_picker = PriorityPicker(initial_value=PRIORITY_VALUES["普通"])
-        category_box = BoxLayout(orientation="vertical", spacing=dp(4))
+        category_box = BoxLayout(orientation="vertical", spacing=dp(4), size_hint_y=None, height=dp(80))
         category_label = Label(
             text="分类",
             size_hint_y=None,
@@ -80,19 +79,17 @@ class DetailScreen(Screen):
             hint_text="分类",
             multiline=False,
             size_hint_y=None,
-            height=dp(52),
-            padding=(dp(12), dp(14), dp(12), dp(10)),
+            height=dp(58),
+            padding=(dp(14), dp(16), dp(14), dp(10)),
             font_name=FONT_NAME,
         )
         category_box.add_widget(category_label)
         category_box.add_widget(self.category_input)
-        option_row.add_widget(self.priority_picker)
-        option_row.add_widget(category_box)
 
         self.status_button = Button(
             text="标记完成",
             size_hint_y=None,
-            height=dp(46),
+            height=dp(58),
             background_normal="",
             background_color=(0.26, 0.42, 0.64, 1),
             color=(1, 1, 1, 1),
@@ -117,7 +114,7 @@ class DetailScreen(Screen):
             font_name=FONT_NAME,
         )
 
-        buttons = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(8))
+        buttons = BoxLayout(size_hint_y=None, height=dp(58), spacing=dp(8))
         save = Button(
             text="保存",
             background_normal="",
@@ -141,15 +138,22 @@ class DetailScreen(Screen):
         root.add_widget(self.title_input)
         root.add_widget(self.content_input)
         root.add_widget(self.date_picker)
-        root.add_widget(option_row)
+        root.add_widget(self.priority_picker)
+        root.add_widget(category_box)
         root.add_widget(self.status_button)
         root.add_widget(self.meta_label)
         root.add_widget(self.error_label)
         root.add_widget(buttons)
-        root.add_widget(Label(size_hint_y=None, height=dp(12), font_name=FONT_NAME))
+        root.add_widget(Label(size_hint_y=None, height=dp(180), font_name=FONT_NAME))
 
-        scroll = FormScrollView(do_scroll_x=False, scroll_distance=dp(28), scroll_timeout=350)
+        scroll = FormScrollView(do_scroll_x=False, scroll_distance=dp(32), scroll_timeout=420)
         scroll.add_widget(root)
+        scroll.register_focus_widgets(
+            self.title_input,
+            self.content_input,
+            self.date_picker.input,
+            self.category_input,
+        )
         self.add_widget(scroll)
 
     def load_task(self, task_id):
@@ -216,7 +220,7 @@ class DetailScreen(Screen):
             )
         )
 
-        buttons = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
+        buttons = BoxLayout(size_hint_y=None, height=dp(56), spacing=dp(8))
         cancel = Button(text="取消", font_name=FONT_NAME)
         confirm = Button(
             text="移入回收站",
@@ -233,7 +237,7 @@ class DetailScreen(Screen):
             title="确认",
             content=content,
             size_hint=(0.8, None),
-            height=dp(190),
+            height=dp(210),
             title_font=FONT_NAME,
         )
         cancel.bind(on_release=popup.dismiss)

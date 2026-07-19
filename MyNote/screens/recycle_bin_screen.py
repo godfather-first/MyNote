@@ -91,8 +91,8 @@ class RecycleBinScreen(Screen):
     def _build_ui(self):
         root = BoxLayout(orientation="vertical", spacing=0)
 
-        header = BoxLayout(size_hint_y=None, height=dp(58), spacing=dp(8), padding=(dp(12), dp(8)))
-        back = Button(text="<", size_hint=(None, None), width=dp(52), height=dp(42), font_name=FONT_NAME)
+        header = BoxLayout(size_hint_y=None, height=dp(64), spacing=dp(8), padding=(dp(12), dp(4)))
+        back = Button(text="<", size_hint=(None, None), width=dp(56), height=dp(56), font_name=FONT_NAME)
         back.bind(on_release=lambda *_: self._back_home())
         title = Label(
             text="回收站",

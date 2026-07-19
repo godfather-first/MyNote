@@ -1,6 +1,26 @@
 """MyNote application entry point."""
 
+import ctypes
+import sys
 from dataclasses import dataclass
+
+
+def enable_windows_dpi_awareness() -> None:
+    """Keep Kivy pointer coordinates aligned with widgets on scaled Windows."""
+
+    if sys.platform != "win32":
+        return
+
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
+
+enable_windows_dpi_awareness()
 
 from kivy.app import App
 from kivy.config import Config
@@ -34,6 +54,7 @@ class MyNoteApp(App):
 
     def build(self):
         Window.clearcolor = (0.96, 0.96, 0.94, 1)
+        Window.softinput_mode = "below_target"
         register_chinese_font()
         # Use user_data_dir so the db file is stored in a writable location
         # on both desktop and Android (never inside the APK).

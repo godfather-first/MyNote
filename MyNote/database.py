@@ -81,22 +81,39 @@ class TaskDatabase:
         self.connection.commit()
 
     def _migrate_schema(self) -> None:
+        self._ensure_columns(
+            "tasks",
+            {
+                "due_date": "TEXT DEFAULT ''",
+                "priority": "INTEGER DEFAULT 0",
+                "category": "TEXT DEFAULT '默认'",
+                "reminder_sent": "INTEGER DEFAULT 0",
+            },
+        )
+        self._ensure_columns(
+            "deleted_tasks",
+            {
+                "original_task_id": "INTEGER",
+                "due_date": "TEXT DEFAULT ''",
+                "priority": "INTEGER DEFAULT 0",
+                "category": "TEXT DEFAULT '默认'",
+                "reminder_sent": "INTEGER DEFAULT 0",
+                "deleted_time": "TEXT DEFAULT ''",
+            },
+        )
+
+    def _ensure_columns(self, table_name: str, definitions: dict[str, str]) -> None:
         columns = {
             row["name"]
-            for row in self.connection.execute("PRAGMA table_info(tasks)").fetchall()
+            for row in self.connection.execute(f"PRAGMA table_info({table_name})").fetchall()
         }
-        if "due_date" not in columns:
-            self.connection.execute("ALTER TABLE tasks ADD COLUMN due_date TEXT DEFAULT ''")
-            self.connection.commit()
-        if "priority" not in columns:
-            self.connection.execute("ALTER TABLE tasks ADD COLUMN priority INTEGER DEFAULT 0")
-            self.connection.commit()
-        if "category" not in columns:
-            self.connection.execute("ALTER TABLE tasks ADD COLUMN category TEXT DEFAULT '默认'")
-            self.connection.commit()
-        if "reminder_sent" not in columns:
-            self.connection.execute("ALTER TABLE tasks ADD COLUMN reminder_sent INTEGER DEFAULT 0")
-            self.connection.commit()
+        for column_name, definition in definitions.items():
+            if column_name in columns:
+                continue
+            self.connection.execute(
+                f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"
+            )
+        self.connection.commit()
 
     def _ensure_default_settings(self) -> None:
         self.connection.execute(
@@ -296,14 +313,15 @@ class TaskDatabase:
         return row["value"] if row else default
 
     def set_setting(self, key: str, value: str) -> None:
-        self.connection.execute(
-            """
-            INSERT INTO app_settings (key, value)
-            VALUES (?, ?)
-            ON CONFLICT(key) DO UPDATE SET value = excluded.value
-            """,
-            (key, value),
+        cursor = self.connection.execute(
+            "UPDATE app_settings SET value = ? WHERE key = ?",
+            (value, key),
         )
+        if cursor.rowcount == 0:
+            self.connection.execute(
+                "INSERT INTO app_settings (key, value) VALUES (?, ?)",
+                (key, value),
+            )
         self.connection.commit()
 
     def get_reminder_threshold_minutes(self) -> int:
