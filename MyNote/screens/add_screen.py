@@ -5,10 +5,9 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen
-from kivy.uix.spinner import Spinner
 from kivy.uix.textinput import TextInput
 
-from font_utils import FONT_NAME
+from font_utils import ChineseSpinner, FONT_NAME
 
 
 PRIORITY_VALUES = {"普通": 0, "重要": 1, "紧急": 2}
@@ -68,7 +67,7 @@ class AddScreen(Screen):
         )
 
         option_row = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(8))
-        self.priority_spinner = Spinner(
+        self.priority_spinner = ChineseSpinner(
             text="普通",
             values=("普通", "重要", "紧急"),
             font_name=FONT_NAME,

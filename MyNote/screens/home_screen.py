@@ -129,6 +129,10 @@ class TaskRow(BoxLayout):
         if touch.is_double_tap:
             self._open_detail()
             return True
+        # Skip long-press when the touch is on the status_button (checkbox)
+        # to avoid triggering accidental delete when toggling task status
+        if self.status_button.collide_point(*touch.pos):
+            return super().on_touch_down(touch)
         self._long_press_fired = False
         self._long_press_event = Clock.schedule_once(self._trigger_long_press, 0.7)
         return super().on_touch_down(touch)

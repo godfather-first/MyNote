@@ -1,8 +1,8 @@
 """SQLite persistence for MyNote.
 
 The database is stored locally as tasks.db in the application directory.
-On Android, Kivy maps this directory into the app sandbox, so no server or
-network access is required.
+On Android, the caller should pass the app's user_data_dir so the db file
+is stored in a writable location (not inside the APK).
 """
 
 from __future__ import annotations
@@ -18,11 +18,11 @@ from models import Task
 class TaskDatabase:
     """Small SQLite wrapper for task CRUD operations."""
 
-    def __init__(self, db_path: str | None = None) -> None:
-        if db_path is None:
-            db_path = str(Path(__file__).resolve().parent / "tasks.db")
-        self.db_path = db_path
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+    def __init__(self, db_dir: str | None = None) -> None:
+        if db_dir is None:
+            db_dir = str(Path(__file__).resolve().parent)
+        self.db_path = str(Path(db_dir) / "tasks.db")
+        os.makedirs(db_dir, exist_ok=True)
         self.connection = sqlite3.connect(self.db_path)
         self.connection.row_factory = sqlite3.Row
         self._create_table()

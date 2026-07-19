@@ -7,10 +7,9 @@ from kivy.uix.checkbox import CheckBox
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
-from kivy.uix.spinner import Spinner
 from kivy.uix.textinput import TextInput
 
-from font_utils import FONT_NAME
+from font_utils import ChineseSpinner, FONT_NAME
 from screens.add_screen import PRIORITY_VALUES
 
 
@@ -72,7 +71,7 @@ class DetailScreen(Screen):
         )
 
         option_row = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(8))
-        self.priority_spinner = Spinner(
+        self.priority_spinner = ChineseSpinner(
             text="普通",
             values=("普通", "重要", "紧急"),
             font_name=FONT_NAME,

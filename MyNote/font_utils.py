@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from kivy.core.text import LabelBase
+from kivy.uix.spinner import Spinner, SpinnerOption
 
 
 FONT_NAME = "MyNoteCN"
@@ -30,4 +31,20 @@ def register_chinese_font() -> str:
             return FONT_NAME
 
     return "Roboto"
+
+
+class ChineseSpinnerOption(SpinnerOption):
+    """Spinner dropdown button with Chinese font preset."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("font_name", FONT_NAME)
+        super().__init__(**kwargs)
+
+
+class ChineseSpinner(Spinner):
+    """Spinner that uses Chinese font in both the button and dropdown items."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("option_cls", ChineseSpinnerOption)
+        super().__init__(**kwargs)
 
