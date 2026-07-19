@@ -12,6 +12,8 @@ from kivy.uix.button import Button
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.textinput import TextInput
 
 from date_utils import days_in_month, normalize_date_text, safe_date, shift_month, today_text
 from font_utils import FONT_NAME
@@ -44,8 +46,37 @@ class RoundedPanel(BoxLayout):
         self._rect.size = self.size
 
 
+class StableTextInput(TextInput):
+    """Text input that keeps focus stable inside mobile scrollable forms."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("unfocus_on_touch", False)
+        super().__init__(**kwargs)
+
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            self.focus = True
+        return super().on_touch_down(touch)
+
+
+class FormScrollView(ScrollView):
+    """ScrollView that lets nested TextInput widgets receive taps first."""
+
+    def on_touch_down(self, touch):
+        text_input = self._text_input_at(touch)
+        if text_input is not None:
+            return text_input.on_touch_down(touch)
+        return super().on_touch_down(touch)
+
+    def _text_input_at(self, touch):
+        for widget in self.walk(restrict=True):
+            if isinstance(widget, TextInput) and widget.collide_point(*touch.pos):
+                return widget
+        return None
+
+
 class DatePickerField(BoxLayout):
-    """Button-like field that opens a calendar picker."""
+    """Date text field with a calendar picker button."""
 
     def __init__(self, label_text: str = "截止日期", initial_date: str | None = None, **kwargs):
         super().__init__(orientation="vertical", spacing=dp(4), **kwargs)
@@ -70,25 +101,37 @@ class DatePickerField(BoxLayout):
         )
         caption.bind(size=lambda widget, _value: setattr(widget, "text_size", widget.size))
 
-        self.button = Button(
+        field_row = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(6))
+        self.input = StableTextInput(
             text="",
+            hint_text="YYYY-MM-DD",
+            multiline=False,
+            padding=(dp(12), dp(14), dp(12), dp(10)),
+            font_name=FONT_NAME,
+        )
+        self.button = Button(
+            text="选择",
+            size_hint_x=None,
+            width=dp(62),
             size_hint_y=None,
             height=dp(52),
             background_normal="",
-            background_color=(0.97, 0.97, 0.95, 1),
-            color=(0.12, 0.12, 0.12, 1),
-            font_size=dp(16),
+            background_color=(0.26, 0.42, 0.64, 1),
+            color=(1, 1, 1, 1),
+            font_size=dp(14),
             font_name=FONT_NAME,
         )
         self.button.bind(on_release=lambda *_: self.open_picker())
+        field_row.add_widget(self.input)
+        field_row.add_widget(self.button)
 
         self.add_widget(caption)
-        self.add_widget(self.button)
+        self.add_widget(field_row)
         self.set_date(initial_date or today_text())
 
     @property
     def date_text(self) -> str:
-        return self._selected_date.strftime("%Y-%m-%d")
+        return self.input.text.strip()
 
     def get_date(self) -> str:
         return self.date_text
@@ -99,7 +142,7 @@ class DatePickerField(BoxLayout):
         self._selected_date = date(year, month, day)
         self._visible_year = year
         self._visible_month = month
-        self.button.text = f"选择日期：{self.date_text}"
+        self.input.text = self._selected_date.strftime("%Y-%m-%d")
         if self._popup:
             self._refresh_calendar()
 

@@ -5,13 +5,11 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen
-from kivy.uix.scrollview import ScrollView
-from kivy.uix.textinput import TextInput
 
 from date_utils import normalize_date_text, today_text
 from font_utils import FONT_NAME
 from priority import PRIORITY_VALUES
-from ui_components import DatePickerField, PriorityPicker
+from ui_components import DatePickerField, FormScrollView, PriorityPicker, StableTextInput
 
 
 class AddScreen(Screen):
@@ -44,7 +42,7 @@ class AddScreen(Screen):
         header.add_widget(back)
         header.add_widget(title)
 
-        self.title_input = TextInput(
+        self.title_input = StableTextInput(
             hint_text="任务标题 *",
             multiline=False,
             size_hint_y=None,
@@ -52,7 +50,7 @@ class AddScreen(Screen):
             padding=(dp(12), dp(14), dp(12), dp(10)),
             font_name=FONT_NAME,
         )
-        self.content_input = TextInput(
+        self.content_input = StableTextInput(
             hint_text="备注",
             multiline=True,
             size_hint_y=None,
@@ -76,7 +74,7 @@ class AddScreen(Screen):
             font_name=FONT_NAME,
         )
         category_label.bind(size=lambda widget, _value: setattr(widget, "text_size", widget.size))
-        self.category_input = TextInput(
+        self.category_input = StableTextInput(
             hint_text="分类，例如 工作/生活",
             multiline=False,
             size_hint_y=None,
@@ -118,7 +116,7 @@ class AddScreen(Screen):
         root.add_widget(save)
         root.add_widget(Label(size_hint_y=None, height=dp(12), font_name=FONT_NAME))
 
-        scroll = ScrollView()
+        scroll = FormScrollView(do_scroll_x=False, scroll_distance=dp(28), scroll_timeout=350)
         scroll.add_widget(root)
         self.add_widget(scroll)
 

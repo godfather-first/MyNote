@@ -2,6 +2,7 @@
 
 from datetime import date, datetime
 
+from kivy.animation import Animation
 from kivy.clock import Clock
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
@@ -26,6 +27,7 @@ FILTERS = [
     ("today", "今日"),
     ("important", "重要"),
 ]
+FILTER_ORDER = [filter_key for filter_key, _text in FILTERS]
 
 
 def due_state(due_date: str, is_done: bool) -> tuple[str, tuple[float, float, float, float]]:
@@ -61,6 +63,7 @@ class TaskRow(RoundedPanel):
         self._long_press_fired = False
         self._touch_start_x = 0
         self._touch_start_y = 0
+        self._row_origin_x = 0
         self._swipe_deleted = False
 
         self.orientation = "horizontal"
@@ -69,10 +72,23 @@ class TaskRow(RoundedPanel):
         self.size_hint_y = None
         self.height = dp(82)
 
+        if task.is_done:
+            self.add_widget(
+                Label(
+                    text="✓",
+                    size_hint=(None, 1),
+                    width=dp(26),
+                    color=(0.18, 0.55, 0.28, 1),
+                    bold=True,
+                    font_size=dp(22),
+                    font_name=FONT_NAME,
+                )
+            )
+
         info = BoxLayout(orientation="vertical", spacing=dp(3))
         text_color = (0.48, 0.48, 0.48, 1) if task.is_done else (0.12, 0.12, 0.12, 1)
         self.title_label = Label(
-            text=escape_markup(task.title),
+            text=self._title_text(),
             size_hint_y=None,
             height=dp(30),
             halign="left",
@@ -128,8 +144,10 @@ class TaskRow(RoundedPanel):
         touch.grab(self)
         self._touch_start_x = touch.x
         self._touch_start_y = touch.y
+        self._row_origin_x = self.x
         self._swipe_deleted = False
         self._long_press_fired = False
+        Animation.cancel_all(self, "x")
         self._long_press_event = Clock.schedule_once(self._trigger_long_press, 2.0)
         return True
 
@@ -138,10 +156,14 @@ class TaskRow(RoundedPanel):
             return super().on_touch_move(touch)
         dx = touch.x - self._touch_start_x
         dy = touch.y - self._touch_start_y
-        if dx > dp(96) and abs(dx) > abs(dy) * 1.35 and not self._swipe_deleted:
-            self._swipe_deleted = True
+        if dx > dp(8) and abs(dx) > abs(dy) * 1.1:
             self._cancel_long_press()
-            self.on_delete(self.task.id)
+            offset = min(dx, max(dp(124), self.width * 0.42))
+            self.x = self._row_origin_x + offset
+            self.set_bg_color((1, 0.92, 0.90, 1) if offset > dp(96) else (1, 1, 1, 1))
+            return True
+        if abs(dy) > dp(18):
+            self._cancel_long_press()
         return True
 
     def on_touch_up(self, touch):
@@ -153,10 +175,19 @@ class TaskRow(RoundedPanel):
         dy = touch.y - self._touch_start_y
         if self._long_press_fired:
             self._set_title_preview(False)
+            self._animate_back()
+            return True
+        if dx > dp(96) and abs(dx) > abs(dy) * 1.2:
+            self._swipe_deleted = True
+            target_x = self._row_origin_x + max(self.width, dp(360))
+            Animation(x=target_x, opacity=0, duration=0.16, t="out_quad").start(self)
+            Clock.schedule_once(lambda *_: self.on_delete(self.task.id), 0.17)
             return True
         if not self._swipe_deleted and abs(dx) < dp(16) and abs(dy) < dp(16) and self.collide_point(*touch.pos):
+            self._animate_back()
             self._open_detail()
             return True
+        self._animate_back()
         return True
 
     def _cancel_long_press(self):
@@ -168,13 +199,21 @@ class TaskRow(RoundedPanel):
         self._long_press_fired = True
         self._set_title_preview(True)
 
+    def _title_text(self) -> str:
+        title = escape_markup(self.task.title)
+        return f"[s]{title}[/s]" if self.task.is_done else title
+
     def _set_title_preview(self, preview: bool):
         if preview:
             self.title_label.text = f"[s]{escape_markup(self.task.title)}[/s]"
             self.title_label.color = (0.72, 0.16, 0.16, 1)
         else:
-            self.title_label.text = escape_markup(self.task.title)
+            self.title_label.text = self._title_text()
             self.title_label.color = (0.48, 0.48, 0.48, 1) if self.task.is_done else (0.12, 0.12, 0.12, 1)
+
+    def _animate_back(self):
+        self.set_bg_color((1, 1, 1, 1))
+        Animation(x=self._row_origin_x, opacity=1, duration=0.12, t="out_quad").start(self)
 
     def _open_detail(self, *_args):
         self.on_open(self.task.id)
@@ -192,6 +231,9 @@ class HomeScreen(Screen):
         self.current_filter = "all"
         self.filter_buttons = {}
         self._active_reminder_popup = None
+        self._filter_swipe_start = (0, 0)
+        self._filter_swipe_allowed = False
+        self._filter_swipe_started_on_task = False
         self._build_ui()
         self._reminder_event = Clock.schedule_interval(self._poll_due_reminders, 30)
         self._cleanup_event = Clock.schedule_interval(
@@ -215,7 +257,7 @@ class HomeScreen(Screen):
             font_name=FONT_NAME,
         )
         title.bind(size=lambda widget, _value: setattr(widget, "text_size", widget.size))
-        recycle = Button(
+        self.recycle_button = Button(
             text="回收站",
             size_hint=(None, None),
             width=dp(84),
@@ -225,9 +267,9 @@ class HomeScreen(Screen):
             color=(1, 1, 1, 1),
             font_name=FONT_NAME,
         )
-        recycle.bind(on_release=lambda *_: self._go_recycle_bin())
+        self.recycle_button.bind(on_release=lambda *_: self._go_recycle_bin())
         header.add_widget(title)
-        header.add_widget(recycle)
+        header.add_widget(self.recycle_button)
 
         self.search_input = TextInput(
             hint_text="搜索任务标题或备注",
@@ -239,7 +281,7 @@ class HomeScreen(Screen):
         )
         self.search_input.bind(text=lambda *_: self.refresh())
 
-        filter_bar = BoxLayout(size_hint_y=None, height=dp(42), spacing=dp(6), padding=(dp(10), 0))
+        self.filter_bar = BoxLayout(size_hint_y=None, height=dp(42), spacing=dp(6), padding=(dp(10), 0))
         for filter_key, filter_text in FILTERS:
             button = Button(
                 text=filter_text,
@@ -251,7 +293,7 @@ class HomeScreen(Screen):
             )
             button.bind(on_release=lambda _button, key=filter_key: self._set_filter(key))
             self.filter_buttons[filter_key] = button
-            filter_bar.add_widget(button)
+            self.filter_bar.add_widget(button)
 
         self.summary_label = Label(
             text="",
@@ -272,7 +314,7 @@ class HomeScreen(Screen):
         self.list_box.bind(minimum_height=self.list_box.setter("height"))
         self.scroll.add_widget(self.list_box)
 
-        add_button = Button(
+        self.add_button = Button(
             text="+ 添加任务",
             size_hint_y=None,
             height=dp(56),
@@ -282,16 +324,55 @@ class HomeScreen(Screen):
             font_size=dp(18),
             font_name=FONT_NAME,
         )
-        add_button.bind(on_release=lambda *_: self._go_add())
+        self.add_button.bind(on_release=lambda *_: self._go_add())
 
         root.add_widget(header)
         root.add_widget(self.search_input)
-        root.add_widget(filter_bar)
+        root.add_widget(self.filter_bar)
         root.add_widget(self.summary_label)
         root.add_widget(self.scroll)
-        root.add_widget(add_button)
+        root.add_widget(self.add_button)
         self.add_widget(root)
         self._refresh_filter_buttons()
+
+    def on_touch_down(self, touch):
+        self._filter_swipe_start = (touch.x, touch.y)
+        self._filter_swipe_allowed = self._can_start_filter_swipe(touch)
+        return super().on_touch_down(touch)
+
+    def on_touch_up(self, touch):
+        handled = super().on_touch_up(touch)
+        if not self._filter_swipe_allowed:
+            return handled
+
+        dx = touch.x - self._filter_swipe_start[0]
+        dy = touch.y - self._filter_swipe_start[1]
+        if self._filter_swipe_started_on_task and dx > 0:
+            self._filter_swipe_allowed = False
+            return handled
+        if abs(dx) > dp(92) and abs(dx) > abs(dy) * 1.35:
+            self._move_filter(1 if dx < 0 else -1)
+            self._filter_swipe_allowed = False
+            return True
+        return handled
+
+    def _can_start_filter_swipe(self, touch) -> bool:
+        self._filter_swipe_started_on_task = False
+        if not self.scroll.collide_point(*touch.pos):
+            return False
+        if self.search_input.collide_point(*touch.pos):
+            return False
+        if self.filter_bar.collide_point(*touch.pos):
+            return False
+        if self.add_button.collide_point(*touch.pos):
+            return False
+        if self.recycle_button.collide_point(*touch.pos):
+            return False
+        self._filter_swipe_started_on_task = any(
+            isinstance(widget, TaskRow) and widget.collide_point(*touch.pos)
+            for widget in self.list_box.children
+        )
+        return True
 
     def on_pre_enter(self, *_args):
         self.refresh()
@@ -347,6 +428,11 @@ class HomeScreen(Screen):
         self.current_filter = filter_key
         self._refresh_filter_buttons()
         self.refresh()
+
+    def _move_filter(self, offset):
+        current_index = FILTER_ORDER.index(self.current_filter)
+        next_index = (current_index + offset) % len(FILTER_ORDER)
+        self._set_filter(FILTER_ORDER[next_index])
 
     def _refresh_filter_buttons(self):
         for filter_key, button in self.filter_buttons.items():
